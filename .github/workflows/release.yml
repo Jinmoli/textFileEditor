@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Package plugin
+        run: |
+          mkdir -p release/text-file-editor
+          cp .obsidian/plugins/text-file-editor/main.js release/text-file-editor/main.js
+          cp manifest.json release/text-file-editor/manifest.json
+          cp styles.css release/text-file-editor/styles.css
+          cd release
+          zip -r text-file-editor.zip text-file-editor
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/text-file-editor.zip
+          generate_release_notes: true

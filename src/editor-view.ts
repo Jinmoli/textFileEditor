@@ -1,8 +1,10 @@
 import { ButtonComponent, FileView, Notice, TFile, WorkspaceLeaf, type ViewStateResult } from "obsidian";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { java } from "@codemirror/lang-java";
+import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { sql } from "@codemirror/lang-sql";
 import { xml } from "@codemirror/lang-xml";
@@ -13,8 +15,14 @@ import {
   foldGutter,
   foldKeymap,
   indentOnInput,
+  StreamLanguage,
   syntaxHighlighting
 } from "@codemirror/language";
+import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
+import { powerShell } from "@codemirror/legacy-modes/mode/powershell";
+import { properties } from "@codemirror/legacy-modes/mode/properties";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, Extension } from "@codemirror/state";
 import {
@@ -29,16 +37,31 @@ import {
   rectangularSelection
 } from "@codemirror/view";
 import { getExtensionLanguageKey, normalizeExtension, type LanguageKey } from "./extension-map";
+import {
+  UNKNOWN_FILE_METADATA,
+  exceedsLargeFileThreshold,
+  formatFileSize,
+  formatModifiedTime,
+  type TextFileMetadata
+} from "./file-metadata";
 import { readTextFileContent } from "./file-content";
+import type { TextFileEncoding } from "./text-encoding";
 import type { TextFileEditorSettings } from "./settings-core";
 
 export const TEXT_FILE_EDITOR_VIEW_TYPE = "text-file-editor-view";
 
 const LANGUAGE_SUPPORT: Record<Exclude<LanguageKey, "text">, () => Extension> = {
+  css,
+  dockerfile: () => StreamLanguage.define(dockerFile),
   html,
   java,
+  javascript,
   json,
+  properties: () => StreamLanguage.define(properties),
+  powershell: () => StreamLanguage.define(powerShell),
+  shell: () => StreamLanguage.define(shell),
   sql,
+  toml: () => StreamLanguage.define(toml),
   xml,
   yaml
 };
@@ -51,6 +74,12 @@ export class TextFileEditorView extends FileView {
   private readonly readOnlyCompartment = new Compartment();
   private readonly wrapCompartment = new Compartment();
   private cleanContent = "";
+  private currentEncoding: TextFileEncoding = "utf-8";
+  private currentLanguage: LanguageKey = "text";
+  private currentMetadata: TextFileMetadata = UNKNOWN_FILE_METADATA;
+  private cursorLine = 1;
+  private cursorColumn = 1;
+  private draftIntervalId: number | null = null;
   private isDirty = false;
   private isLoading = false;
   private isReadOnly: boolean;
@@ -112,6 +141,7 @@ export class TextFileEditorView extends FileView {
     }
     this.editor?.destroy();
     this.editor = null;
+    this.stopDraftAutosave();
     await super.onUnloadFile(file);
   }
 
@@ -132,6 +162,7 @@ export class TextFileEditorView extends FileView {
       }
       this.cleanContent = content;
       this.setDirty(false);
+      await this.clearDraft(target);
       new Notice(`已保存：${target.name}`);
     } catch (error) {
       console.error(error);
@@ -222,14 +253,22 @@ export class TextFileEditorView extends FileView {
 
     this.isLoading = true;
     try {
-      const content = await readTextFileContent({
+      this.currentMetadata = {
+        size: file.stat.size,
+        mtime: file.stat.mtime
+      };
+      this.applyLargeFileModeIfNeeded(file.name);
+      const result = await readTextFileContent({
         path: file.path,
         name: file.name,
         vaultRead: () => this.app.vault.read(file),
-        adapterRead: (path) => this.app.vault.adapter.read(path)
+        adapterRead: (path) => this.app.vault.adapter.read(path),
+        adapterReadBinary: (path) => this.app.vault.adapter.readBinary(path),
+        preferredEncoding: this.settingsProvider().encoding
       });
-      this.cleanContent = content;
-      this.createEditor(content, file.extension);
+      this.currentEncoding = result.encoding;
+      this.cleanContent = result.content;
+      this.createEditor(result.content, file.extension);
       this.setDirty(false);
     } catch (error) {
       console.error(error);
@@ -250,16 +289,21 @@ export class TextFileEditorView extends FileView {
 
     this.isLoading = true;
     try {
-      const content = await readTextFileContent({
+      this.currentMetadata = await this.readPathMetadata(target.path);
+      this.applyLargeFileModeIfNeeded(target.name);
+      const result = await readTextFileContent({
         path: target.path,
         name: target.name,
         vaultRead: async () => {
           throw new Error("文件尚未进入 Obsidian 文件索引。");
         },
-        adapterRead: (path) => this.app.vault.adapter.read(path)
+        adapterRead: (path) => this.app.vault.adapter.read(path),
+        adapterReadBinary: (path) => this.app.vault.adapter.readBinary(path),
+        preferredEncoding: this.settingsProvider().encoding
       });
-      this.cleanContent = content;
-      this.createEditor(content, target.extension);
+      this.currentEncoding = result.encoding;
+      this.cleanContent = result.content;
+      this.createEditor(result.content, target.extension);
       this.setDirty(false);
     } catch (error) {
       console.error(error);
@@ -292,6 +336,9 @@ export class TextFileEditorView extends FileView {
 
     this.editor?.destroy();
     this.editorHostEl.empty();
+    this.currentLanguage = getExtensionLanguageKey(extension);
+    this.cursorLine = 1;
+    this.cursorColumn = 1;
 
     this.editor = new EditorView({
       parent: this.editorHostEl,
@@ -306,10 +353,15 @@ export class TextFileEditorView extends FileView {
             if (!this.isLoading && update.docChanged) {
               this.setDirty(update.state.doc.toString() !== this.cleanContent);
             }
+            if (update.selectionSet || update.docChanged) {
+              this.updateCursorStatus(update.state);
+            }
           })
         ]
       })
     });
+    this.updateCursorStatus(this.editor.state);
+    this.startDraftAutosave();
   }
 
   private createBaseEditorExtensions(): Extension[] {
@@ -330,6 +382,13 @@ export class TextFileEditorView extends FileView {
       highlightActiveLine(),
       highlightSelectionMatches(),
       keymap.of([
+        {
+          key: "Mod-s",
+          run: () => {
+            void this.save();
+            return true;
+          }
+        },
         indentWithTab,
         ...closeBracketsKeymap,
         ...defaultKeymap,
@@ -361,9 +420,102 @@ export class TextFileEditorView extends FileView {
     const mode = this.isReadOnly ? "只读" : "可编辑";
     const wrap = this.isWordWrap ? "自动换行" : "不换行";
     const dirty = this.isDirty ? "未保存" : "已保存";
-    this.statusEl.setText(`${dirty} · ${mode} · ${wrap}`);
+    const size = formatFileSize(this.currentMetadata.size);
+    const modified = formatModifiedTime(this.currentMetadata.mtime);
+    const language = this.currentLanguage === "text" ? "纯文本" : this.currentLanguage.toUpperCase();
+    this.statusEl.setText(
+      `${dirty} · ${mode} · ${wrap} · ${language} · ${this.currentEncoding.toUpperCase()} · ${size} · ${modified} · ${this.cursorLine}:${this.cursorColumn}`
+    );
   }
 
+  private updateCursorStatus(state: EditorState): void {
+    const position = state.selection.main.head;
+    const line = state.doc.lineAt(position);
+    this.cursorLine = line.number;
+    this.cursorColumn = position - line.from + 1;
+    this.updateStatus();
+  }
+
+  private applyLargeFileModeIfNeeded(fileName: string): void {
+    const settings = this.settingsProvider();
+    if (!exceedsLargeFileThreshold(this.currentMetadata.size, settings.largeFileWarningSizeMb)) {
+      return;
+    }
+
+    const size = formatFileSize(this.currentMetadata.size);
+    const shouldOpenReadOnly = window.confirm(
+      `文件“${fileName}”大小为 ${size}，编辑大文件可能造成卡顿。点击“确定”以只读方式打开，点击“取消”继续可编辑打开。`
+    );
+    if (shouldOpenReadOnly) {
+      this.isReadOnly = true;
+    }
+  }
+
+  private async readPathMetadata(path: string): Promise<TextFileMetadata> {
+    try {
+      const stat = await this.app.vault.adapter.stat(path);
+      return {
+        size: stat?.size ?? null,
+        mtime: stat?.mtime ?? null
+      };
+    } catch (error) {
+      console.warn("Text File Editor：读取文件元信息失败。", error);
+      return UNKNOWN_FILE_METADATA;
+    }
+  }
+
+  private startDraftAutosave(): void {
+    this.stopDraftAutosave();
+    const intervalSeconds = this.settingsProvider().autoSaveDraftIntervalSeconds;
+    if (intervalSeconds <= 0) {
+      return;
+    }
+
+    this.draftIntervalId = window.setInterval(() => {
+      void this.saveDraft();
+    }, intervalSeconds * 1000);
+  }
+
+  private stopDraftAutosave(): void {
+    if (this.draftIntervalId !== null) {
+      window.clearInterval(this.draftIntervalId);
+      this.draftIntervalId = null;
+    }
+  }
+
+  private async saveDraft(): Promise<void> {
+    const target = this.getCurrentTarget();
+    if (!target || !this.editor || !this.isDirty) {
+      return;
+    }
+
+    try {
+      await this.ensureDraftFolder();
+      await this.app.vault.adapter.write(this.getDraftPath(target), this.editor.state.doc.toString());
+    } catch (error) {
+      console.warn("Text File Editor：自动保存草稿失败。", error);
+    }
+  }
+
+  private async clearDraft(target: TextFileTarget): Promise<void> {
+    try {
+      await this.app.vault.adapter.remove(this.getDraftPath(target));
+    } catch {
+      // 草稿不存在时无需提示。
+    }
+  }
+
+  private getDraftPath(target: TextFileTarget): string {
+    return `.obsidian/plugins/text-file-editor/drafts/${encodeURIComponent(target.path)}.draft`;
+  }
+
+  private async ensureDraftFolder(): Promise<void> {
+    try {
+      await this.app.vault.adapter.mkdir(".obsidian/plugins/text-file-editor/drafts");
+    } catch {
+      // 目录已存在时无需处理。
+    }
+  }
 }
 
 interface TextFilePathTarget {

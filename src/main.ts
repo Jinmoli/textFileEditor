@@ -27,6 +27,7 @@ export default class TextFileEditorPlugin extends Plugin {
     this.addCommand({
       id: "save-current-text-file",
       name: "保存当前文本文件",
+      hotkeys: [{ modifiers: ["Mod"], key: "s" }],
       callback: () => {
         void this.getActiveTextFileView()?.save();
       }

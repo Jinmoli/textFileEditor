@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SETTINGS,
   mergeSettings,
+  normalizePositiveNumber,
   parseExtensionInput,
   validateSupportedExtensions
 } from "./settings-core";
@@ -16,11 +17,16 @@ describe("settings", () => {
     expect(
       mergeSettings({
         defaultReadOnly: true,
+        encoding: "gbk",
+        largeFileWarningSizeMb: 8,
         supportedExtensions: ["SQL", ".json", "sql"]
       })
     ).toEqual({
+      autoSaveDraftIntervalSeconds: DEFAULT_SETTINGS.autoSaveDraftIntervalSeconds,
       defaultReadOnly: true,
       defaultWordWrap: DEFAULT_SETTINGS.defaultWordWrap,
+      encoding: "gbk",
+      largeFileWarningSizeMb: 8,
       autoOpenFileList: DEFAULT_SETTINGS.autoOpenFileList,
       saveShortcutHint: DEFAULT_SETTINGS.saveShortcutHint,
       supportedExtensions: ["sql", "json"]
@@ -44,5 +50,11 @@ describe("settings", () => {
 
   it("accepts a clean extension list", () => {
     expect(validateSupportedExtensions(["txt", "sql"])).toEqual({ ok: true });
+  });
+
+  it("normalizes numeric settings with a safe fallback", () => {
+    expect(normalizePositiveNumber("10", 5)).toBe(10);
+    expect(normalizePositiveNumber(-1, 5)).toBe(5);
+    expect(normalizePositiveNumber("bad", 5)).toBe(5);
   });
 });

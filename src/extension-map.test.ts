@@ -32,6 +32,11 @@ describe("extension-map", () => {
     expect(getExtensionLanguageKey("htm")).toBe("html");
     expect(getExtensionLanguageKey("java")).toBe("java");
     expect(getExtensionLanguageKey("sql")).toBe("sql");
+    expect(getExtensionLanguageKey("ps1")).toBe("powershell");
+    expect(getExtensionLanguageKey("toml")).toBe("toml");
+    expect(getExtensionLanguageKey("dockerfile")).toBe("dockerfile");
+    expect(getExtensionLanguageKey("sh")).toBe("shell");
+    expect(getExtensionLanguageKey("properties")).toBe("properties");
     expect(getExtensionLanguageKey("txt")).toBe("text");
   });
 });

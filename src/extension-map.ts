@@ -1,4 +1,18 @@
-export type LanguageKey = "html" | "java" | "json" | "sql" | "text" | "xml" | "yaml";
+export type LanguageKey =
+  | "css"
+  | "dockerfile"
+  | "html"
+  | "java"
+  | "javascript"
+  | "json"
+  | "properties"
+  | "powershell"
+  | "shell"
+  | "sql"
+  | "text"
+  | "toml"
+  | "xml"
+  | "yaml";
 
 export const DEFAULT_SUPPORTED_EXTENSIONS = [
   "txt",
@@ -14,18 +28,48 @@ export const DEFAULT_SUPPORTED_EXTENSIONS = [
   "htm",
   "java",
   "conf",
-  "ini"
+  "ini",
+  "env",
+  "sh",
+  "bash",
+  "zsh",
+  "bat",
+  "cmd",
+  "ps1",
+  "toml",
+  "dockerfile",
+  "js",
+  "mjs",
+  "cjs",
+  "ts",
+  "css"
 ] as const;
 
 const LANGUAGE_BY_EXTENSION: Record<string, LanguageKey> = {
+  bash: "shell",
+  bat: "shell",
+  cjs: "javascript",
+  cmd: "shell",
+  css: "css",
+  dockerfile: "dockerfile",
+  env: "properties",
   htm: "html",
   html: "html",
+  ini: "properties",
   java: "java",
+  js: "javascript",
   json: "json",
+  mjs: "javascript",
+  properties: "properties",
+  ps1: "powershell",
+  sh: "shell",
   sql: "sql",
+  toml: "toml",
+  ts: "javascript",
   xml: "xml",
   yaml: "yaml",
-  yml: "yaml"
+  yml: "yaml",
+  zsh: "shell"
 };
 
 export function normalizeExtension(extension: string): string {

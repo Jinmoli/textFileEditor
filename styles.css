@@ -117,3 +117,10 @@
   font-size: var(--font-ui-small);
   padding: 12px 4px;
 }
+
+.text-file-editor-setting-preview {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin: 0 0 12px;
+  user-select: text;
+}
