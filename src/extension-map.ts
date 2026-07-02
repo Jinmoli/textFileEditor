@@ -1,4 +1,4 @@
-export type LanguageKey = "html" | "json" | "sql" | "text" | "xml" | "yaml";
+export type LanguageKey = "html" | "java" | "json" | "sql" | "text" | "xml" | "yaml";
 
 export const DEFAULT_SUPPORTED_EXTENSIONS = [
   "txt",
@@ -12,6 +12,7 @@ export const DEFAULT_SUPPORTED_EXTENSIONS = [
   "xml",
   "html",
   "htm",
+  "java",
   "conf",
   "ini"
 ] as const;
@@ -19,6 +20,7 @@ export const DEFAULT_SUPPORTED_EXTENSIONS = [
 const LANGUAGE_BY_EXTENSION: Record<string, LanguageKey> = {
   htm: "html",
   html: "html",
+  java: "java",
   json: "json",
   sql: "sql",
   xml: "xml",

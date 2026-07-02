@@ -19,6 +19,7 @@ describe("extension-map", () => {
 
   it("detects supported extensions after normalization", () => {
     expect(isSupportedExtension(".YML", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
+    expect(isSupportedExtension(".java", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
     expect(isSupportedExtension("exe", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(false);
   });
 
@@ -29,6 +30,7 @@ describe("extension-map", () => {
     expect(getExtensionLanguageKey("xml")).toBe("xml");
     expect(getExtensionLanguageKey("html")).toBe("html");
     expect(getExtensionLanguageKey("htm")).toBe("html");
+    expect(getExtensionLanguageKey("java")).toBe("java");
     expect(getExtensionLanguageKey("sql")).toBe("sql");
     expect(getExtensionLanguageKey("txt")).toBe("text");
   });
