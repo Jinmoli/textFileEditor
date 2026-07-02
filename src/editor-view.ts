@@ -6,7 +6,8 @@ import { xml } from "@codemirror/lang-xml";
 import { yaml } from "@codemirror/lang-yaml";
 import { Compartment, EditorState, Extension } from "@codemirror/state";
 import { basicSetup, EditorView } from "codemirror";
-import { getExtensionLanguageKey, type LanguageKey } from "./extension-map";
+import { getExtensionLanguageKey, normalizeExtension, type LanguageKey } from "./extension-map";
+import { readTextFileContent } from "./file-content";
 import type { TextFileEditorSettings } from "./settings-core";
 
 export const TEXT_FILE_EDITOR_VIEW_TYPE = "text-file-editor-view";
@@ -51,6 +52,10 @@ export class TextFileEditorView extends FileView {
 
   getIcon(): string {
     return "file-text";
+  }
+
+  canAcceptExtension(extension: string): boolean {
+    return this.settingsProvider().supportedExtensions.includes(normalizeExtension(extension));
   }
 
   async onLoadFile(file: TFile): Promise<void> {
@@ -170,7 +175,12 @@ export class TextFileEditorView extends FileView {
 
     this.isLoading = true;
     try {
-      const content = await this.app.vault.read(file);
+      const content = await readTextFileContent({
+        path: file.path,
+        name: file.name,
+        vaultRead: (target) => this.app.vault.read(target as TFile),
+        adapterRead: (path) => this.app.vault.adapter.read(path)
+      });
       this.cleanContent = content;
       this.createEditor(content, file.extension);
       this.setDirty(false);
@@ -179,7 +189,7 @@ export class TextFileEditorView extends FileView {
       this.contentEl.empty();
       this.contentEl.createDiv({
         cls: "text-file-editor__error",
-        text: "无法读取文件，请确认文件仍存在且 Obsidian 有访问权限。"
+        text: error instanceof Error ? error.message : "无法读取文件，请确认文件仍存在且 Obsidian 有访问权限。"
       });
     } finally {
       this.isLoading = false;
