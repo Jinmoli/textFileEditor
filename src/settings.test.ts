@@ -7,6 +7,11 @@ import {
 } from "./settings-core";
 
 describe("settings", () => {
+  it("enables the text file list on startup by default", () => {
+    expect(DEFAULT_SETTINGS.autoOpenFileList).toBe(true);
+    expect(mergeSettings({ autoOpenFileList: false }).autoOpenFileList).toBe(false);
+  });
+
   it("merges saved settings with defaults and normalizes extensions", () => {
     expect(
       mergeSettings({
@@ -16,6 +21,7 @@ describe("settings", () => {
     ).toEqual({
       defaultReadOnly: true,
       defaultWordWrap: DEFAULT_SETTINGS.defaultWordWrap,
+      autoOpenFileList: DEFAULT_SETTINGS.autoOpenFileList,
       saveShortcutHint: DEFAULT_SETTINGS.saveShortcutHint,
       supportedExtensions: ["sql", "json"]
     });

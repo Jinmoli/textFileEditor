@@ -43,6 +43,16 @@ export class TextFileEditorSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("启动后打开文本文件列表")
+      .setDesc("Obsidian 加载完成后，自动在左侧打开本插件的文本文件列表。")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.autoOpenFileList).onChange(async (value) => {
+          this.plugin.settings.autoOpenFileList = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
       .setName("默认自动换行")
       .setDesc("打开文件时默认启用自动换行。")
       .addToggle((toggle) =>

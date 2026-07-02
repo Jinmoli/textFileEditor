@@ -1,6 +1,7 @@
 import { DEFAULT_SUPPORTED_EXTENSIONS, normalizeExtensionList } from "./extension-map";
 
 export interface TextFileEditorSettings {
+  autoOpenFileList: boolean;
   defaultReadOnly: boolean;
   defaultWordWrap: boolean;
   saveShortcutHint: string;
@@ -8,6 +9,7 @@ export interface TextFileEditorSettings {
 }
 
 export const DEFAULT_SETTINGS: TextFileEditorSettings = {
+  autoOpenFileList: true,
   defaultReadOnly: false,
   defaultWordWrap: true,
   saveShortcutHint: "Ctrl/Cmd+S",
@@ -43,6 +45,7 @@ export function mergeSettings(saved: Partial<TextFileEditorSettings> | null | un
   );
 
   return {
+    autoOpenFileList: saved?.autoOpenFileList ?? DEFAULT_SETTINGS.autoOpenFileList,
     defaultReadOnly: saved?.defaultReadOnly ?? DEFAULT_SETTINGS.defaultReadOnly,
     defaultWordWrap: saved?.defaultWordWrap ?? DEFAULT_SETTINGS.defaultWordWrap,
     saveShortcutHint: saved?.saveShortcutHint?.trim() || DEFAULT_SETTINGS.saveShortcutHint,

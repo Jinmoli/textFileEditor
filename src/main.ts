@@ -38,6 +38,12 @@ export default class TextFileEditorPlugin extends Plugin {
       }
     });
 
+    if (this.settings.autoOpenFileList) {
+      this.app.workspace.onLayoutReady(() => {
+        void this.activateTextFileListView();
+      });
+    }
+
     this.addCommand({
       id: "save-current-text-file",
       name: "保存当前文本文件",
