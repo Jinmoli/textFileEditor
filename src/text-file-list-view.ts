@@ -1,4 +1,5 @@
-import { ItemView, Notice, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
+import { TEXT_FILE_EDITOR_VIEW_TYPE } from "./editor-view";
 import { scanSupportedTextFiles, type TextFileListItem } from "./text-file-list-core";
 import type { TextFileEditorSettings } from "./settings-core";
 
@@ -82,14 +83,16 @@ export class TextFileListView extends ItemView {
 
   private async openFile(path: string): Promise<void> {
     const file = this.app.vault.getFileByPath(path);
-    if (!(file instanceof TFile)) {
-      new Notice(`文件不存在或已被移动：${path}`);
-      void this.render();
-      return;
-    }
-
     const leaf = this.app.workspace.getLeaf(false);
-    await leaf.openFile(file);
+    if (file instanceof TFile) {
+      await leaf.openFile(file);
+    } else {
+      await leaf.setViewState({
+        type: TEXT_FILE_EDITOR_VIEW_TYPE,
+        state: { file: path },
+        active: true
+      });
+    }
     this.app.workspace.setActiveLeaf(leaf, { focus: true });
   }
 }

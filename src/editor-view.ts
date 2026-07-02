@@ -1,4 +1,4 @@
-import { ButtonComponent, FileView, Notice, TFile, WorkspaceLeaf } from "obsidian";
+import { ButtonComponent, FileView, Notice, TFile, WorkspaceLeaf, type ViewStateResult } from "obsidian";
 import { html } from "@codemirror/lang-html";
 import { json } from "@codemirror/lang-json";
 import { sql } from "@codemirror/lang-sql";
@@ -24,6 +24,7 @@ export class TextFileEditorView extends FileView {
   private editor: EditorView | null = null;
   private editorHostEl: HTMLElement | null = null;
   private statusEl: HTMLElement | null = null;
+  private pathOnlyFile: TextFilePathTarget | null = null;
   private readonly readOnlyCompartment = new Compartment();
   private readonly wrapCompartment = new Compartment();
   private cleanContent = "";
@@ -47,7 +48,7 @@ export class TextFileEditorView extends FileView {
   }
 
   getDisplayText(): string {
-    return this.file?.basename ?? "Text File Editor";
+    return this.file?.basename ?? this.pathOnlyFile?.name ?? "Text File Editor";
   }
 
   getIcon(): string {
@@ -59,9 +60,24 @@ export class TextFileEditorView extends FileView {
   }
 
   async onLoadFile(file: TFile): Promise<void> {
+    this.pathOnlyFile = null;
     await super.onLoadFile(file);
     this.renderShell();
     await this.loadFileContent(file);
+  }
+
+  async setState(state: unknown, result: ViewStateResult): Promise<void> {
+    const path = getStateFilePath(state);
+    const indexedFile = path ? this.app.vault.getFileByPath(path) : null;
+    if (path && !(indexedFile instanceof TFile) && this.canAcceptExtension(getExtensionFromPath(path))) {
+      this.pathOnlyFile = createPathTarget(path);
+      this.renderShell();
+      await this.loadPathContent(this.pathOnlyFile);
+      result.history = true;
+      return;
+    }
+
+    await super.setState(state, result);
   }
 
   async onUnloadFile(file: TFile): Promise<void> {
@@ -77,19 +93,23 @@ export class TextFileEditorView extends FileView {
   }
 
   async save(): Promise<void> {
-    const file = this.file;
+    const target = this.getCurrentTarget();
     const editor = this.editor;
-    if (!file || !editor) {
+    if (!target || !editor) {
       new Notice("当前没有可保存的文本文件。");
       return;
     }
 
     try {
       const content = editor.state.doc.toString();
-      await this.app.vault.modify(file, content);
+      if (target.file) {
+        await this.app.vault.modify(target.file, content);
+      } else {
+        await this.app.vault.adapter.write(target.path, content);
+      }
       this.cleanContent = content;
       this.setDirty(false);
-      new Notice(`已保存：${file.name}`);
+      new Notice(`已保存：${target.name}`);
     } catch (error) {
       console.error(error);
       new Notice("保存失败，请确认文件未被占用且磁盘可写。");
@@ -97,20 +117,24 @@ export class TextFileEditorView extends FileView {
   }
 
   async reload(): Promise<void> {
-    const file = this.file;
-    if (!file) {
+    const target = this.getCurrentTarget();
+    if (!target) {
       new Notice("当前没有可重新加载的文本文件。");
       return;
     }
 
     if (this.isDirty) {
-      const shouldReload = window.confirm(`文件“${file.name}”还有未保存的修改，重新加载会丢失这些修改。确定继续吗？`);
+      const shouldReload = window.confirm(`文件“${target.name}”还有未保存的修改，重新加载会丢失这些修改。确定继续吗？`);
       if (!shouldReload) {
         return;
       }
     }
 
-    await this.loadFileContent(file);
+    if (target.file) {
+      await this.loadFileContent(target.file);
+    } else {
+      await this.loadPathContent(target);
+    }
   }
 
   toggleReadOnly(): void {
@@ -196,6 +220,48 @@ export class TextFileEditorView extends FileView {
     }
   }
 
+  private async loadPathContent(target: TextFilePathTarget): Promise<void> {
+    if (!this.editorHostEl) {
+      this.renderShell();
+    }
+
+    this.isLoading = true;
+    try {
+      const content = await readTextFileContent({
+        path: target.path,
+        name: target.name,
+        vaultRead: async () => {
+          throw new Error("文件尚未进入 Obsidian 文件索引。");
+        },
+        adapterRead: (path) => this.app.vault.adapter.read(path)
+      });
+      this.cleanContent = content;
+      this.createEditor(content, target.extension);
+      this.setDirty(false);
+    } catch (error) {
+      console.error(error);
+      this.contentEl.empty();
+      this.contentEl.createDiv({
+        cls: "text-file-editor__error",
+        text: error instanceof Error ? error.message : "无法读取文件，请确认文件仍存在且 Obsidian 有访问权限。"
+      });
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  private getCurrentTarget(): TextFileTarget | null {
+    if (this.file) {
+      return {
+        file: this.file,
+        path: this.file.path,
+        name: this.file.name,
+        extension: this.file.extension
+      };
+    }
+    return this.pathOnlyFile;
+  }
+
   private createEditor(content: string, extension: string): void {
     if (!this.editorHostEl) {
       return;
@@ -246,4 +312,41 @@ export class TextFileEditorView extends FileView {
     const dirty = this.isDirty ? "未保存" : "已保存";
     this.statusEl.setText(`${dirty} · ${mode} · ${wrap}`);
   }
+}
+
+interface TextFilePathTarget {
+  file?: undefined;
+  path: string;
+  name: string;
+  extension: string;
+}
+
+interface IndexedTextFileTarget {
+  file: TFile;
+  path: string;
+  name: string;
+  extension: string;
+}
+
+type TextFileTarget = TextFilePathTarget | IndexedTextFileTarget;
+
+function getStateFilePath(state: unknown): string | null {
+  if (state && typeof state === "object" && "file" in state && typeof state.file === "string") {
+    return state.file;
+  }
+  return null;
+}
+
+function createPathTarget(path: string): TextFilePathTarget {
+  const name = path.split("/").pop() ?? path;
+  return {
+    path,
+    name,
+    extension: getExtensionFromPath(path)
+  };
+}
+
+function getExtensionFromPath(path: string): string {
+  const name = path.split("/").pop() ?? path;
+  return normalizeExtension(name.includes(".") ? name.split(".").pop() ?? "" : "");
 }
