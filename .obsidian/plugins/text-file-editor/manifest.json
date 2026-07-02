@@ -1,10 +1,10 @@
 {
   "id": "text-file-editor",
   "name": "Text File Editor",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "minAppVersion": "1.5.0",
-  "description": "Open and edit txt, sql, json, log, config, yml, properties, xml, html and other text files in Obsidian.",
-  "author": "",
-  "authorUrl": "",
+  "description": "Open and edit txt, sql, json, log, config, yml, java, properties, xml, html and other text files in Obsidian.",
+  "author": "Jinmoli",
+  "authorUrl": "https://github.com/Jinmoli",
   "isDesktopOnly": false
 }

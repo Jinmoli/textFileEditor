@@ -1,7 +1,7 @@
 {
   "name": "obsidian-text-file-editor",
-  "version": "0.1.0",
-  "description": "Open and edit common text files inside Obsidian.",
+  "version": "1.0.0",
+  "description": "Open and edit txt, sql, json, log, config, yml, java, properties, xml, html and other text files in Obsidian.",
   "main": "main.js",
   "scripts": {
     "test": "vitest run",
@@ -13,8 +13,16 @@
     "plugin",
     "text-editor"
   ],
-  "author": "",
+  "author": "Jinmoli",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jinmoli/textFileEditor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Jinmoli/textFileEditor/issues"
+  },
+  "homepage": "https://github.com/Jinmoli/textFileEditor#readme",
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
