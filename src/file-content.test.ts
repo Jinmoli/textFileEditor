@@ -63,4 +63,23 @@ describe("readTextFileContent", () => {
     expect(adapterReadBinary).toHaveBeenCalledWith("legacy.sql");
     expect(adapterRead).not.toHaveBeenCalled();
   });
+
+  it("uses binary adapter read first when a concrete encoding is requested", async () => {
+    const vaultRead = vi.fn().mockResolvedValue("vault content");
+    const adapterRead = vi.fn().mockResolvedValue("fallback content");
+    const adapterReadBinary = vi.fn().mockResolvedValue(new TextEncoder().encode("binary content").buffer);
+
+    const result = await readTextFileContent({
+      path: "legacy.properties",
+      vaultRead,
+      adapterRead,
+      adapterReadBinary,
+      preferredEncoding: "utf-8"
+    });
+
+    expect(result).toEqual({ content: "binary content", encoding: "utf-8" });
+    expect(adapterReadBinary).toHaveBeenCalledWith("legacy.properties");
+    expect(vaultRead).not.toHaveBeenCalled();
+    expect(adapterRead).not.toHaveBeenCalled();
+  });
 });

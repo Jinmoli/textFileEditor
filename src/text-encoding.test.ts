@@ -4,6 +4,7 @@ import { decodeTextContent, normalizeEncodingInput } from "./text-encoding";
 describe("text encoding helpers", () => {
   it("normalizes encoding setting values", () => {
     expect(normalizeEncodingInput("UTF8")).toBe("utf-8");
+    expect(normalizeEncodingInput("ASCII")).toBe("ascii");
     expect(normalizeEncodingInput("utf16le")).toBe("utf-16le");
     expect(normalizeEncodingInput("gbk")).toBe("gbk");
     expect(normalizeEncodingInput("unknown")).toBe("auto");
@@ -12,6 +13,11 @@ describe("text encoding helpers", () => {
   it("decodes preferred utf-8 content", () => {
     const buffer = new TextEncoder().encode("hello").buffer;
     expect(decodeTextContent(buffer, "utf-8")).toEqual({ content: "hello", encoding: "utf-8" });
+  });
+
+  it("decodes preferred ascii content", () => {
+    const buffer = new Uint8Array([0x68, 0x65, 0x6c, 0x6c, 0x6f]).buffer;
+    expect(decodeTextContent(buffer, "ascii")).toEqual({ content: "hello", encoding: "ascii" });
   });
 
   it("uses bom to detect utf-16le content in auto mode", () => {

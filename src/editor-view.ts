@@ -14,14 +14,17 @@ import {
   defaultHighlightStyle,
   foldGutter,
   foldKeymap,
+  HighlightStyle,
   indentOnInput,
+  StreamParser,
   StreamLanguage,
+  StringStream,
   syntaxHighlighting
 } from "@codemirror/language";
 import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
+import { groovy } from "@codemirror/legacy-modes/mode/groovy";
 import { powerShell } from "@codemirror/legacy-modes/mode/powershell";
 import { properties } from "@codemirror/legacy-modes/mode/properties";
-import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, Extension } from "@codemirror/state";
@@ -36,6 +39,7 @@ import {
   lineNumbers,
   rectangularSelection
 } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
 import { getExtensionLanguageKey, normalizeExtension, type LanguageKey } from "./extension-map";
 import {
   UNKNOWN_FILE_METADATA,
@@ -45,34 +49,135 @@ import {
   type TextFileMetadata
 } from "./file-metadata";
 import { readTextFileContent } from "./file-content";
-import type { TextFileEncoding } from "./text-encoding";
+import { normalizeEncodingInput, type TextFileEncoding } from "./text-encoding";
 import type { TextFileEditorSettings } from "./settings-core";
 
 export const TEXT_FILE_EDITOR_VIEW_TYPE = "text-file-editor-view";
 
+const SHELL_KEYWORDS = new Set([
+  "case",
+  "do",
+  "done",
+  "elif",
+  "else",
+  "esac",
+  "export",
+  "fi",
+  "for",
+  "function",
+  "if",
+  "in",
+  "local",
+  "read",
+  "return",
+  "select",
+  "set",
+  "shift",
+  "then",
+  "trap",
+  "unset",
+  "until",
+  "while"
+]);
+
+const BATCH_KEYWORDS = new Set([
+  "call",
+  "cd",
+  "choice",
+  "copy",
+  "del",
+  "do",
+  "echo",
+  "else",
+  "endlocal",
+  "errorlevel",
+  "exit",
+  "for",
+  "goto",
+  "if",
+  "in",
+  "md",
+  "move",
+  "not",
+  "pause",
+  "popd",
+  "pushd",
+  "rd",
+  "rem",
+  "ren",
+  "set",
+  "setlocal",
+  "shift",
+  "start"
+]);
+
+const shellParser: StreamParser<null> = {
+  name: "shell",
+  token(stream) {
+    return tokenizeShell(stream);
+  }
+};
+
+const batchParser: StreamParser<null> = {
+  name: "batch",
+  token(stream) {
+    return tokenizeBatch(stream);
+  }
+};
+
 const LANGUAGE_SUPPORT: Record<Exclude<LanguageKey, "text">, () => Extension> = {
+  batch: () => StreamLanguage.define(batchParser),
   css,
   dockerfile: () => StreamLanguage.define(dockerFile),
+  groovy: () => StreamLanguage.define(groovy),
   html,
   java,
   javascript,
   json,
   properties: () => StreamLanguage.define(properties),
   powershell: () => StreamLanguage.define(powerShell),
-  shell: () => StreamLanguage.define(shell),
+  shell: () => StreamLanguage.define(shellParser),
   sql,
   toml: () => StreamLanguage.define(toml),
   xml,
   yaml
 };
 
+const scriptHighlightStyle = HighlightStyle.define([
+  { tag: tags.keyword, color: "var(--text-accent)" },
+  { tag: tags.comment, color: "var(--text-muted)", fontStyle: "italic" },
+  { tag: tags.string, color: "var(--color-green)" },
+  { tag: tags.variableName, color: "var(--color-yellow)" },
+  { tag: tags.number, color: "var(--color-orange)" },
+  { tag: tags.operator, color: "var(--color-cyan)" },
+  { tag: tags.atom, color: "var(--color-purple)" }
+]);
+
+const ENCODING_OPTIONS: ReadonlyArray<{ value: TextFileEncoding; label: string }> = [
+  { value: "auto", label: "Auto" },
+  { value: "ascii", label: "ASCII" },
+  { value: "utf-8", label: "UTF-8" },
+  { value: "gbk", label: "GBK" },
+  { value: "gb18030", label: "GB18030" },
+  { value: "big5", label: "Big5" },
+  { value: "shift_jis", label: "Shift_JIS" },
+  { value: "utf-16le", label: "UTF-16 LE" },
+  { value: "utf-16be", label: "UTF-16 BE" }
+];
+
 export class TextFileEditorView extends FileView {
+  private encodingSelectEl: HTMLSelectElement | null = null;
   private editor: EditorView | null = null;
   private editorHostEl: HTMLElement | null = null;
+  private readOnlyButton: ButtonComponent | null = null;
+  private reloadButton: ButtonComponent | null = null;
+  private saveButton: ButtonComponent | null = null;
   private statusEl: HTMLElement | null = null;
+  private wrapButton: ButtonComponent | null = null;
   private pathOnlyFile: TextFilePathTarget | null = null;
   private readonly readOnlyCompartment = new Compartment();
   private readonly wrapCompartment = new Compartment();
+  private readonly fileStates = new Map<string, FileEditorState>();
   private cleanContent = "";
   private currentEncoding: TextFileEncoding = "utf-8";
   private currentLanguage: LanguageKey = "text";
@@ -105,6 +210,26 @@ export class TextFileEditorView extends FileView {
 
   getIcon(): string {
     return "file-text";
+  }
+
+  onload(): void {
+    super.onload();
+    this.registerDomEvent(
+      document,
+      "keydown",
+      (event) => {
+        this.handleDocumentKeydown(event);
+      },
+      { capture: true }
+    );
+    this.registerDomEvent(
+      window,
+      "keydown",
+      (event) => {
+        this.handleDocumentKeydown(event);
+      },
+      { capture: true }
+    );
   }
 
   canAcceptExtension(extension: string): boolean {
@@ -155,6 +280,14 @@ export class TextFileEditorView extends FileView {
 
     try {
       const content = editor.state.doc.toString();
+      if (this.currentEncoding !== "utf-8" && this.currentEncoding !== "ascii") {
+        const shouldSave = window.confirm(
+          `当前文件按 ${formatEncodingLabel(this.currentEncoding)} 显示。受 Obsidian 写入能力限制，保存后文件编码可能变为 UTF-8。确定继续保存吗？`
+        );
+        if (!shouldSave) {
+          return;
+        }
+      }
       if (target.file) {
         await this.app.vault.modify(target.file, content);
       } else {
@@ -193,17 +326,21 @@ export class TextFileEditorView extends FileView {
 
   toggleReadOnly(): void {
     this.isReadOnly = !this.isReadOnly;
+    this.rememberCurrentFileState();
     this.editor?.dispatch({
       effects: this.readOnlyCompartment.reconfigure(EditorState.readOnly.of(this.isReadOnly))
     });
+    this.updateToolbarState();
     this.updateStatus();
   }
 
   toggleWordWrap(): void {
     this.isWordWrap = !this.isWordWrap;
+    this.rememberCurrentFileState();
     this.editor?.dispatch({
       effects: this.wrapCompartment.reconfigure(this.isWordWrap ? EditorView.lineWrapping : [])
     });
+    this.updateToolbarState();
     this.updateStatus();
   }
 
@@ -214,39 +351,43 @@ export class TextFileEditorView extends FileView {
 
     const toolbar = container.createDiv({ cls: "text-file-editor__toolbar" });
 
-    new ButtonComponent(toolbar)
-      .setButtonText("保存")
-      .setTooltip(`保存当前文件（${this.settingsProvider().saveShortcutHint}）`)
-      .onClick(() => {
-        void this.save();
-      });
+    this.saveButton = this.createToolbarButton(toolbar, "save", "保存", `保存当前文件（${this.settingsProvider().saveShortcutHint}）`, () => {
+      void this.save();
+    });
+    this.saveButton.buttonEl.addClass("text-file-editor__button--primary");
 
-    new ButtonComponent(toolbar)
-      .setButtonText("重新加载")
-      .setTooltip("从磁盘重新读取文件内容")
-      .onClick(() => {
-        void this.reload();
-      });
+    this.reloadButton = this.createToolbarButton(toolbar, "refresh-cw", "重新加载", "从磁盘重新读取文件内容", () => {
+      void this.reload();
+    });
 
-    new ButtonComponent(toolbar)
-      .setButtonText("只读")
-      .setTooltip("切换只读/编辑模式")
-      .onClick(() => {
-        this.toggleReadOnly();
-      });
+    this.readOnlyButton = this.createToolbarButton(toolbar, "unlock", "可编辑", "切换只读/编辑模式", () => {
+      this.toggleReadOnly();
+    });
 
-    new ButtonComponent(toolbar)
-      .setButtonText("换行")
-      .setTooltip("切换自动换行")
-      .onClick(() => {
-        this.toggleWordWrap();
+    this.wrapButton = this.createToolbarButton(toolbar, "wrap-text", "自动换行", "切换自动换行", () => {
+      this.toggleWordWrap();
+    });
+
+    const encodingGroup = toolbar.createDiv({ cls: "text-file-editor__encoding" });
+    encodingGroup.createSpan({ cls: "text-file-editor__encoding-label", text: "编码" });
+    this.encodingSelectEl = encodingGroup.createEl("select", { cls: "text-file-editor__encoding-select" });
+    for (const option of ENCODING_OPTIONS) {
+      this.encodingSelectEl.createEl("option", {
+        attr: { value: option.value },
+        text: option.label
       });
+    }
+    this.encodingSelectEl.value = this.currentEncoding;
+    this.encodingSelectEl.onchange = () => {
+      void this.switchEncoding(normalizeEncodingInput(this.encodingSelectEl?.value));
+    };
 
     this.statusEl = toolbar.createDiv({ cls: "text-file-editor__status" });
     this.editorHostEl = container.createDiv({ cls: "text-file-editor__host" });
+    this.updateToolbarState();
   }
 
-  private async loadFileContent(file: TFile): Promise<void> {
+  private async loadFileContent(file: TFile, preferredEncoding = this.settingsProvider().encoding): Promise<void> {
     if (!this.editorHostEl) {
       this.renderShell();
     }
@@ -257,6 +398,7 @@ export class TextFileEditorView extends FileView {
         size: file.stat.size,
         mtime: file.stat.mtime
       };
+      this.applyFileState(file.path);
       this.applyLargeFileModeIfNeeded(file.name);
       const result = await readTextFileContent({
         path: file.path,
@@ -264,7 +406,7 @@ export class TextFileEditorView extends FileView {
         vaultRead: () => this.app.vault.read(file),
         adapterRead: (path) => this.app.vault.adapter.read(path),
         adapterReadBinary: (path) => this.app.vault.adapter.readBinary(path),
-        preferredEncoding: this.settingsProvider().encoding
+        preferredEncoding
       });
       this.currentEncoding = result.encoding;
       this.cleanContent = result.content;
@@ -282,7 +424,7 @@ export class TextFileEditorView extends FileView {
     }
   }
 
-  private async loadPathContent(target: TextFilePathTarget): Promise<void> {
+  private async loadPathContent(target: TextFilePathTarget, preferredEncoding = this.settingsProvider().encoding): Promise<void> {
     if (!this.editorHostEl) {
       this.renderShell();
     }
@@ -290,6 +432,7 @@ export class TextFileEditorView extends FileView {
     this.isLoading = true;
     try {
       this.currentMetadata = await this.readPathMetadata(target.path);
+      this.applyFileState(target.path);
       this.applyLargeFileModeIfNeeded(target.name);
       const result = await readTextFileContent({
         path: target.path,
@@ -299,7 +442,7 @@ export class TextFileEditorView extends FileView {
         },
         adapterRead: (path) => this.app.vault.adapter.read(path),
         adapterReadBinary: (path) => this.app.vault.adapter.readBinary(path),
-        preferredEncoding: this.settingsProvider().encoding
+        preferredEncoding
       });
       this.currentEncoding = result.encoding;
       this.cleanContent = result.content;
@@ -315,6 +458,29 @@ export class TextFileEditorView extends FileView {
     } finally {
       this.isLoading = false;
     }
+  }
+
+  private async switchEncoding(encoding: TextFileEncoding): Promise<void> {
+    const target = this.getCurrentTarget();
+    if (!target) {
+      new Notice("当前没有可切换编码的文本文件。");
+      return;
+    }
+
+    if (this.isDirty) {
+      const shouldSwitch = window.confirm(`文件“${target.name}”还有未保存的修改，切换编码会从磁盘重新读取并丢失这些修改。确定继续吗？`);
+      if (!shouldSwitch) {
+        this.updateToolbarState();
+        return;
+      }
+    }
+
+    if (target.file) {
+      await this.loadFileContent(target.file, encoding);
+    } else {
+      await this.loadPathContent(target, encoding);
+    }
+    new Notice(`已按 ${formatEncodingLabel(this.currentEncoding)} 重新读取：${target.name}`);
   }
 
   private getCurrentTarget(): TextFileTarget | null {
@@ -361,6 +527,7 @@ export class TextFileEditorView extends FileView {
       })
     });
     this.updateCursorStatus(this.editor.state);
+    this.updateToolbarState();
     this.startDraftAutosave();
   }
 
@@ -376,6 +543,7 @@ export class TextFileEditorView extends FileView {
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      syntaxHighlighting(scriptHighlightStyle),
       bracketMatching(),
       closeBrackets(),
       rectangularSelection(),
@@ -428,12 +596,69 @@ export class TextFileEditorView extends FileView {
     );
   }
 
+  private updateToolbarState(): void {
+    this.setToolbarButtonContent(this.readOnlyButton, this.isReadOnly ? "lock" : "unlock", this.isReadOnly ? "只读" : "可编辑");
+    this.setToolbarButtonContent(this.wrapButton, "wrap-text", this.isWordWrap ? "自动换行" : "不换行");
+
+    this.readOnlyButton?.buttonEl.classList.toggle("is-active", this.isReadOnly);
+    this.wrapButton?.buttonEl.classList.toggle("is-active", this.isWordWrap);
+    this.readOnlyButton?.buttonEl.setAttribute("aria-pressed", String(this.isReadOnly));
+    this.wrapButton?.buttonEl.setAttribute("aria-pressed", String(this.isWordWrap));
+
+    if (this.encodingSelectEl) {
+      this.encodingSelectEl.value = this.currentEncoding;
+    }
+  }
+
   private updateCursorStatus(state: EditorState): void {
     const position = state.selection.main.head;
     const line = state.doc.lineAt(position);
     this.cursorLine = line.number;
     this.cursorColumn = position - line.from + 1;
     this.updateStatus();
+  }
+
+  private handleDocumentKeydown(event: KeyboardEvent): void {
+    const isSaveShortcut = (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "s";
+    if (!isSaveShortcut || !this.shouldHandleSaveShortcut(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    void this.save();
+  }
+
+  private shouldHandleSaveShortcut(event: KeyboardEvent): boolean {
+    if (this.app.workspace.getActiveViewOfType(TextFileEditorView) === this) {
+      return true;
+    }
+
+    const target = event.target;
+    return target instanceof Node && this.contentEl.contains(target);
+  }
+
+  private createToolbarButton(
+    toolbar: HTMLElement,
+    icon: string,
+    label: string,
+    tooltip: string,
+    onClick: () => void
+  ): ButtonComponent {
+    const button = new ButtonComponent(toolbar).setTooltip(tooltip).onClick(onClick);
+    button.buttonEl.addClass("text-file-editor__button");
+    this.setToolbarButtonContent(button, icon, label);
+    return button;
+  }
+
+  private setToolbarButtonContent(button: ButtonComponent | null, icon: string, label: string): void {
+    if (!button) {
+      return;
+    }
+    button.buttonEl.empty();
+    button.setIcon(icon);
+    button.buttonEl.createSpan({ cls: "text-file-editor__button-label", text: label });
   }
 
   private applyLargeFileModeIfNeeded(fileName: string): void {
@@ -448,7 +673,26 @@ export class TextFileEditorView extends FileView {
     );
     if (shouldOpenReadOnly) {
       this.isReadOnly = true;
+      this.rememberCurrentFileState();
     }
+  }
+
+  private applyFileState(path: string): void {
+    const saved = this.fileStates.get(path);
+    const settings = this.settingsProvider();
+    this.isReadOnly = saved?.readOnly ?? settings.defaultReadOnly;
+    this.isWordWrap = saved?.wordWrap ?? settings.defaultWordWrap;
+  }
+
+  private rememberCurrentFileState(): void {
+    const target = this.getCurrentTarget();
+    if (!target) {
+      return;
+    }
+    this.fileStates.set(target.path, {
+      readOnly: this.isReadOnly,
+      wordWrap: this.isWordWrap
+    });
   }
 
   private async readPathMetadata(path: string): Promise<TextFileMetadata> {
@@ -532,6 +776,11 @@ interface IndexedTextFileTarget {
   extension: string;
 }
 
+interface FileEditorState {
+  readOnly: boolean;
+  wordWrap: boolean;
+}
+
 type TextFileTarget = TextFilePathTarget | IndexedTextFileTarget;
 
 function getStateFilePath(state: unknown): string | null {
@@ -553,4 +802,66 @@ function createPathTarget(path: string): TextFilePathTarget {
 function getExtensionFromPath(path: string): string {
   const name = path.split("/").pop() ?? path;
   return normalizeExtension(name.includes(".") ? name.split(".").pop() ?? "" : "");
+}
+
+function formatEncodingLabel(encoding: TextFileEncoding): string {
+  return ENCODING_OPTIONS.find((option) => option.value === encoding)?.label ?? encoding.toUpperCase();
+}
+
+function tokenizeShell(stream: StringStream): string | null {
+  if (stream.eatSpace()) {
+    return null;
+  }
+  if (stream.match(/^#.*/)) {
+    return "comment";
+  }
+  if (stream.match(/^"(?:[^"\\]|\\.)*"?/) || stream.match(/^'(?:[^']*)'?/)) {
+    return "string";
+  }
+  if (stream.match(/^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/) || stream.match(/^\$[0-9@#?*!-]/)) {
+    return "variableName";
+  }
+  if (stream.match(/^\b\d+(?:\.\d+)?\b/)) {
+    return "number";
+  }
+  if (stream.match(/^(?:&&|\|\||[|&;<>]=?|[(){}])/)) {
+    return "operator";
+  }
+
+  const word = stream.match(/^[A-Za-z_][A-Za-z0-9_-]*/);
+  if (word && word !== true) {
+    return SHELL_KEYWORDS.has(word[0]) ? "keyword" : null;
+  }
+
+  stream.next();
+  return null;
+}
+
+function tokenizeBatch(stream: StringStream): string | null {
+  if (stream.eatSpace()) {
+    return null;
+  }
+  if (stream.match(/^::.*$/) || stream.match(/^rem\b.*$/i)) {
+    return "comment";
+  }
+  if (stream.match(/^"(?:[^"]|"")*"?/)) {
+    return "string";
+  }
+  if (stream.match(/^%%?[A-Za-z0-9_]+/) || stream.match(/^%[^%\s]+%/) || stream.match(/^![^!\s]+!/)) {
+    return "variableName";
+  }
+  if (stream.match(/^\b\d+\b/)) {
+    return "number";
+  }
+  if (stream.match(/^(?:&&|\|\||[|&<>]=?|[()])/)) {
+    return "operator";
+  }
+
+  const word = stream.match(/^[A-Za-z_][A-Za-z0-9_-]*/);
+  if (word && word !== true) {
+    return BATCH_KEYWORDS.has(word[0].toLowerCase()) ? "keyword" : null;
+  }
+
+  stream.next();
+  return null;
 }

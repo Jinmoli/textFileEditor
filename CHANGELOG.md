@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add separate Chinese and English README files.
+- Add BRAT installation instructions.
+- Add ASCII as a manual encoding option.
+- Improve `sh/bash/zsh` and `bat/cmd` syntax highlighting.
+- Remember read-only and word-wrap states per file instead of sharing them across opened files.
+- Improve `Ctrl/Cmd+S` save handling when focus is inside the editor view.
+
 ## v1.1.0
 
 - Add release workflow for automatic GitHub Release zip packaging.

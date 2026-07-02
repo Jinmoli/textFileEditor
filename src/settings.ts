@@ -86,6 +86,7 @@ export class TextFileEditorSettingTab extends PluginSettingTab {
       .addDropdown((dropdown) =>
         dropdown
           .addOption("auto", "Auto")
+          .addOption("ascii", "ASCII")
           .addOption("utf-8", "UTF-8")
           .addOption("gbk", "GBK")
           .addOption("gb18030", "GB18030")

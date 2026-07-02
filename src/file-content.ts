@@ -13,6 +13,15 @@ export interface ReadTextFileContentOptions extends TextFileReader {
 }
 
 export async function readTextFileContent(options: ReadTextFileContentOptions): Promise<DecodedTextContent> {
+  const preferredEncoding = options.preferredEncoding ?? "auto";
+  if (preferredEncoding !== "auto" && options.adapterReadBinary) {
+    try {
+      return decodeTextContent(await options.adapterReadBinary(options.path), preferredEncoding);
+    } catch (binaryError) {
+      console.warn("Text File Editor：指定编码读取失败，尝试使用 Obsidian 文本方式读取。", binaryError);
+    }
+  }
+
   try {
     return {
       content: await options.vaultRead(),
@@ -21,7 +30,7 @@ export async function readTextFileContent(options: ReadTextFileContentOptions): 
   } catch (vaultError) {
     if (options.adapterReadBinary) {
       try {
-        return decodeTextContent(await options.adapterReadBinary(options.path), options.preferredEncoding ?? "auto");
+        return decodeTextContent(await options.adapterReadBinary(options.path), preferredEncoding);
       } catch (binaryError) {
         console.warn("Text File Editor：二进制方式读取失败，尝试使用文本方式读取。", binaryError);
       }

@@ -1,4 +1,4 @@
-export type TextFileEncoding = "auto" | "utf-8" | "gbk" | "gb18030" | "big5" | "shift_jis" | "utf-16le" | "utf-16be";
+export type TextFileEncoding = "auto" | "ascii" | "utf-8" | "gbk" | "gb18030" | "big5" | "shift_jis" | "utf-16le" | "utf-16be";
 
 export interface DecodedTextContent {
   content: string;
@@ -6,6 +6,7 @@ export interface DecodedTextContent {
 }
 
 const DECODABLE_ENCODINGS: Exclude<TextFileEncoding, "auto">[] = [
+  "ascii",
   "utf-8",
   "gbk",
   "gb18030",
@@ -41,6 +42,9 @@ export function decodeTextContent(buffer: ArrayBuffer, preferredEncoding: TextFi
 
 export function normalizeEncodingInput(value: string | null | undefined): TextFileEncoding {
   const normalized = (value ?? "").trim().toLowerCase().replace("_", "-");
+  if (normalized === "us-ascii" || normalized === "ansi-x3.4-1968") {
+    return "ascii";
+  }
   if (normalized === "utf8") {
     return "utf-8";
   }

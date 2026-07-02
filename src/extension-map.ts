@@ -1,6 +1,8 @@
 export type LanguageKey =
+  | "batch"
   | "css"
   | "dockerfile"
+  | "groovy"
   | "html"
   | "java"
   | "javascript"
@@ -38,6 +40,7 @@ export const DEFAULT_SUPPORTED_EXTENSIONS = [
   "ps1",
   "toml",
   "dockerfile",
+  "gradle",
   "js",
   "mjs",
   "cjs",
@@ -47,12 +50,13 @@ export const DEFAULT_SUPPORTED_EXTENSIONS = [
 
 const LANGUAGE_BY_EXTENSION: Record<string, LanguageKey> = {
   bash: "shell",
-  bat: "shell",
+  bat: "batch",
   cjs: "javascript",
-  cmd: "shell",
+  cmd: "batch",
   css: "css",
   dockerfile: "dockerfile",
   env: "properties",
+  gradle: "groovy",
   htm: "html",
   html: "html",
   ini: "properties",

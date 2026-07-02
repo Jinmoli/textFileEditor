@@ -56,7 +56,9 @@ export function normalizePositiveNumber(value: unknown, fallback: number): numbe
 
 export function mergeSettings(saved: Partial<TextFileEditorSettings> | null | undefined): TextFileEditorSettings {
   const supportedExtensions = normalizeExtensionList(
-    saved?.supportedExtensions?.length ? saved.supportedExtensions : DEFAULT_SETTINGS.supportedExtensions
+    saved?.supportedExtensions?.length
+      ? [...saved.supportedExtensions, ...DEFAULT_SETTINGS.supportedExtensions]
+      : DEFAULT_SETTINGS.supportedExtensions
   );
 
   return {

@@ -20,6 +20,13 @@ describe("extension-map", () => {
   it("detects supported extensions after normalization", () => {
     expect(isSupportedExtension(".YML", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
     expect(isSupportedExtension(".java", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
+    expect(isSupportedExtension(".sh", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
+    expect(isSupportedExtension(".bat", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
+    expect(isSupportedExtension(".ps1", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
+    expect(isSupportedExtension(".toml", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
+    expect(isSupportedExtension(".env", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
+    expect(isSupportedExtension(".dockerfile", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
+    expect(isSupportedExtension(".gradle", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(true);
     expect(isSupportedExtension("exe", DEFAULT_SUPPORTED_EXTENSIONS)).toBe(false);
   });
 
@@ -35,7 +42,11 @@ describe("extension-map", () => {
     expect(getExtensionLanguageKey("ps1")).toBe("powershell");
     expect(getExtensionLanguageKey("toml")).toBe("toml");
     expect(getExtensionLanguageKey("dockerfile")).toBe("dockerfile");
+    expect(getExtensionLanguageKey("gradle")).toBe("groovy");
     expect(getExtensionLanguageKey("sh")).toBe("shell");
+    expect(getExtensionLanguageKey("bat")).toBe("batch");
+    expect(getExtensionLanguageKey("cmd")).toBe("batch");
+    expect(getExtensionLanguageKey("env")).toBe("properties");
     expect(getExtensionLanguageKey("properties")).toBe("properties");
     expect(getExtensionLanguageKey("txt")).toBe("text");
   });

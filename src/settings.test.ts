@@ -14,23 +14,39 @@ describe("settings", () => {
   });
 
   it("merges saved settings with defaults and normalizes extensions", () => {
-    expect(
-      mergeSettings({
+    const merged = mergeSettings({
         defaultReadOnly: true,
         encoding: "gbk",
         largeFileWarningSizeMb: 8,
         supportedExtensions: ["SQL", ".json", "sql"]
-      })
-    ).toEqual({
+      });
+
+    expect(merged).toMatchObject({
       autoSaveDraftIntervalSeconds: DEFAULT_SETTINGS.autoSaveDraftIntervalSeconds,
       defaultReadOnly: true,
       defaultWordWrap: DEFAULT_SETTINGS.defaultWordWrap,
       encoding: "gbk",
       largeFileWarningSizeMb: 8,
       autoOpenFileList: DEFAULT_SETTINGS.autoOpenFileList,
-      saveShortcutHint: DEFAULT_SETTINGS.saveShortcutHint,
-      supportedExtensions: ["sql", "json"]
+      saveShortcutHint: DEFAULT_SETTINGS.saveShortcutHint
     });
+    expect(merged.supportedExtensions.slice(0, 2)).toEqual(["sql", "json"]);
+  });
+
+  it("keeps newly added default extensions when merging an older saved extension list", () => {
+    const merged = mergeSettings({
+      supportedExtensions: ["txt", "sql"]
+    });
+
+    expect(merged.supportedExtensions).toContain("txt");
+    expect(merged.supportedExtensions).toContain("sql");
+    expect(merged.supportedExtensions).toContain("sh");
+    expect(merged.supportedExtensions).toContain("bat");
+    expect(merged.supportedExtensions).toContain("ps1");
+    expect(merged.supportedExtensions).toContain("toml");
+    expect(merged.supportedExtensions).toContain("env");
+    expect(merged.supportedExtensions).toContain("dockerfile");
+    expect(merged.supportedExtensions).toContain("gradle");
   });
 
   it("parses comma, whitespace, and newline separated extension input", () => {
