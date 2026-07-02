@@ -7,9 +7,9 @@ import {
 } from "./settings-core";
 
 describe("settings", () => {
-  it("enables the text file list on startup by default", () => {
-    expect(DEFAULT_SETTINGS.autoOpenFileList).toBe(true);
-    expect(mergeSettings({ autoOpenFileList: false }).autoOpenFileList).toBe(false);
+  it("does not open the separate text file list on startup by default", () => {
+    expect(DEFAULT_SETTINGS.autoOpenFileList).toBe(false);
+    expect(mergeSettings({ autoOpenFileList: true }).autoOpenFileList).toBe(true);
   });
 
   it("merges saved settings with defaults and normalizes extensions", () => {

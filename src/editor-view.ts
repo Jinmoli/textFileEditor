@@ -1,32 +1,15 @@
 import { ButtonComponent, FileView, Notice, TFile, WorkspaceLeaf, type ViewStateResult } from "obsidian";
-import { html } from "@codemirror/lang-html";
-import { json } from "@codemirror/lang-json";
-import { sql } from "@codemirror/lang-sql";
-import { xml } from "@codemirror/lang-xml";
-import { yaml } from "@codemirror/lang-yaml";
-import { Compartment, EditorState, Extension } from "@codemirror/state";
-import { basicSetup, EditorView } from "codemirror";
-import { getExtensionLanguageKey, normalizeExtension, type LanguageKey } from "./extension-map";
+import { normalizeExtension } from "./extension-map";
 import { readTextFileContent } from "./file-content";
 import type { TextFileEditorSettings } from "./settings-core";
 
 export const TEXT_FILE_EDITOR_VIEW_TYPE = "text-file-editor-view";
 
-const LANGUAGE_SUPPORT: Record<Exclude<LanguageKey, "text">, () => Extension> = {
-  html,
-  json,
-  sql,
-  xml,
-  yaml
-};
-
 export class TextFileEditorView extends FileView {
-  private editor: EditorView | null = null;
+  private editor: HTMLTextAreaElement | null = null;
   private editorHostEl: HTMLElement | null = null;
   private statusEl: HTMLElement | null = null;
   private pathOnlyFile: TextFilePathTarget | null = null;
-  private readonly readOnlyCompartment = new Compartment();
-  private readonly wrapCompartment = new Compartment();
   private cleanContent = "";
   private isDirty = false;
   private isLoading = false;
@@ -87,7 +70,6 @@ export class TextFileEditorView extends FileView {
         return;
       }
     }
-    this.editor?.destroy();
     this.editor = null;
     await super.onUnloadFile(file);
   }
@@ -101,7 +83,7 @@ export class TextFileEditorView extends FileView {
     }
 
     try {
-      const content = editor.state.doc.toString();
+      const content = editor.value;
       if (target.file) {
         await this.app.vault.modify(target.file, content);
       } else {
@@ -139,17 +121,13 @@ export class TextFileEditorView extends FileView {
 
   toggleReadOnly(): void {
     this.isReadOnly = !this.isReadOnly;
-    this.editor?.dispatch({
-      effects: this.readOnlyCompartment.reconfigure(EditorState.readOnly.of(this.isReadOnly))
-    });
+    this.applyEditorMode();
     this.updateStatus();
   }
 
   toggleWordWrap(): void {
     this.isWordWrap = !this.isWordWrap;
-    this.editor?.dispatch({
-      effects: this.wrapCompartment.reconfigure(this.isWordWrap ? EditorView.lineWrapping : [])
-    });
+    this.applyEditorMode();
     this.updateStatus();
   }
 
@@ -202,11 +180,11 @@ export class TextFileEditorView extends FileView {
       const content = await readTextFileContent({
         path: file.path,
         name: file.name,
-        vaultRead: (target) => this.app.vault.read(target as TFile),
+        vaultRead: () => this.app.vault.read(file),
         adapterRead: (path) => this.app.vault.adapter.read(path)
       });
       this.cleanContent = content;
-      this.createEditor(content, file.extension);
+      this.createEditor(content);
       this.setDirty(false);
     } catch (error) {
       console.error(error);
@@ -236,7 +214,7 @@ export class TextFileEditorView extends FileView {
         adapterRead: (path) => this.app.vault.adapter.read(path)
       });
       this.cleanContent = content;
-      this.createEditor(content, target.extension);
+      this.createEditor(content);
       this.setDirty(false);
     } catch (error) {
       console.error(error);
@@ -262,39 +240,28 @@ export class TextFileEditorView extends FileView {
     return this.pathOnlyFile;
   }
 
-  private createEditor(content: string, extension: string): void {
+  private createEditor(content: string): void {
     if (!this.editorHostEl) {
       return;
     }
 
-    this.editor?.destroy();
     this.editorHostEl.empty();
 
-    this.editor = new EditorView({
-      parent: this.editorHostEl,
-      state: EditorState.create({
-        doc: content,
-        extensions: [
-          basicSetup,
-          this.getLanguageExtension(extension),
-          this.readOnlyCompartment.of(EditorState.readOnly.of(this.isReadOnly)),
-          this.wrapCompartment.of(this.isWordWrap ? EditorView.lineWrapping : []),
-          EditorView.updateListener.of((update) => {
-            if (!this.isLoading && update.docChanged) {
-              this.setDirty(update.state.doc.toString() !== this.cleanContent);
-            }
-          })
-        ]
-      })
+    const textarea = this.editorHostEl.createEl("textarea", {
+      cls: "text-file-editor__textarea",
+      attr: {
+        "aria-label": "文本文件内容",
+        spellcheck: "false"
+      }
     });
-  }
-
-  private getLanguageExtension(extension: string): Extension {
-    const languageKey = getExtensionLanguageKey(extension);
-    if (languageKey === "text") {
-      return [];
-    }
-    return LANGUAGE_SUPPORT[languageKey]();
+    textarea.value = content;
+    textarea.oninput = () => {
+      if (!this.isLoading) {
+        this.setDirty(textarea.value !== this.cleanContent);
+      }
+    };
+    this.editor = textarea;
+    this.applyEditorMode();
   }
 
   private setDirty(value: boolean): void {
@@ -311,6 +278,16 @@ export class TextFileEditorView extends FileView {
     const wrap = this.isWordWrap ? "自动换行" : "不换行";
     const dirty = this.isDirty ? "未保存" : "已保存";
     this.statusEl.setText(`${dirty} · ${mode} · ${wrap}`);
+  }
+
+  private applyEditorMode(): void {
+    if (!this.editor) {
+      return;
+    }
+
+    this.editor.readOnly = this.isReadOnly;
+    this.editor.wrap = this.isWordWrap ? "soft" : "off";
+    this.editor.classList.toggle("text-file-editor__textarea--no-wrap", !this.isWordWrap);
   }
 }
 

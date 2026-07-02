@@ -2,6 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 import { readTextFileContent } from "./file-content";
 
 describe("readTextFileContent", () => {
+  it("calls the primary vault reader without a synthetic file object", async () => {
+    const vaultRead = vi.fn().mockResolvedValue("txt content");
+    const adapterRead = vi.fn().mockResolvedValue("fallback content");
+
+    const content = await readTextFileContent({
+      path: "项目/智慧农业/单通阀门控制接口.txt",
+      name: "单通阀门控制接口.txt",
+      vaultRead,
+      adapterRead
+    });
+
+    expect(content).toBe("txt content");
+    expect(vaultRead).toHaveBeenCalledWith();
+    expect(adapterRead).not.toHaveBeenCalled();
+  });
+
   it("uses adapter.read when vault.read fails", async () => {
     const vaultRead = vi.fn().mockRejectedValue(new Error("vault read failed"));
     const adapterRead = vi.fn().mockResolvedValue("sql content");

@@ -4,13 +4,13 @@ export interface TextFileReader {
 }
 
 export interface ReadTextFileContentOptions extends TextFileReader {
-  vaultRead: (file: TextFileReader) => Promise<string>;
+  vaultRead: () => Promise<string>;
   adapterRead: (path: string) => Promise<string>;
 }
 
 export async function readTextFileContent(options: ReadTextFileContentOptions): Promise<string> {
   try {
-    return await options.vaultRead(options);
+    return await options.vaultRead();
   } catch (vaultError) {
     try {
       return await options.adapterRead(options.path);

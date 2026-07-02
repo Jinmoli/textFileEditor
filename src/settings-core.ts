@@ -9,7 +9,7 @@ export interface TextFileEditorSettings {
 }
 
 export const DEFAULT_SETTINGS: TextFileEditorSettings = {
-  autoOpenFileList: true,
+  autoOpenFileList: false,
   defaultReadOnly: false,
   defaultWordWrap: true,
   saveShortcutHint: "Ctrl/Cmd+S",
