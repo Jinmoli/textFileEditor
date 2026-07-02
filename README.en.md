@@ -36,11 +36,7 @@ You can customize the supported extensions in the plugin settings tab. When upgr
 1. Install and enable the community plugin `BRAT` in Obsidian.
 2. Open the `BRAT` settings tab.
 3. Choose `Add Beta plugin`.
-4. Enter the repository:
-
-   ```text
-   Jinmoli/textFileEditor
-   ```
+4. Enter the repository: [Jinmoli/textFileEditor](https://github.com/Jinmoli/textFileEditor)
 
 5. Follow the prompts to install and enable `Text File Editor`.
 6. If non-Markdown files still do not appear in the file explorer, restart Obsidian or press `Ctrl+R` to reload.

@@ -36,11 +36,7 @@ txt, sql, json, log, config, yml, yaml, properties, xml, html, htm, java, conf, 
 1. 在 Obsidian 中安装并启用社区插件 `BRAT`。
 2. 打开 `BRAT` 设置。
 3. 选择 `Add Beta plugin`。
-4. 输入仓库地址：
-
-   ```text
-   Jinmoli/textFileEditor
-   ```
+4. 输入仓库地址：[Jinmoli/textFileEditor](https://github.com/Jinmoli/textFileEditor)
 
 5. 按提示安装并启用 `Text File Editor`。
 6. 如果文件夹树里仍看不到非 Markdown 文件，重启 Obsidian 或按 `Ctrl+R` 重新加载。
