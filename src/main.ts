@@ -17,7 +17,10 @@ export default class TextFileEditorPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    enableUnsupportedFileVisibility(this.app.vault as unknown as { setConfig?: (key: string, value: unknown) => void });
+    enableUnsupportedFileVisibility({
+      vault: this.app.vault as unknown as { setConfig?: (key: string, value: unknown) => void },
+      workspace: this.app.workspace as unknown as { getLeavesOfType?: (type: string) => Array<{ view?: unknown }> }
+    });
 
     this.registerView(TEXT_FILE_EDITOR_VIEW_TYPE, (leaf) => new TextFileEditorView(leaf, () => this.settings));
 

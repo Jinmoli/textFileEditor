@@ -24,4 +24,10 @@ describe("text encoding helpers", () => {
     const buffer = new Uint8Array([0xff, 0xfe, 0x41, 0x00]).buffer;
     expect(decodeTextContent(buffer, "auto")).toEqual({ content: "A", encoding: "utf-16le" });
   });
+
+  it("prefers chinese legacy encodings for gbk-encoded content in auto mode", () => {
+    const buffer = new Uint8Array([0xd6, 0xd0, 0xce, 0xc4]).buffer;
+
+    expect(decodeTextContent(buffer, "auto")).toEqual({ content: "中文", encoding: "gbk" });
+  });
 });

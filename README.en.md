@@ -15,8 +15,11 @@ Text File Editor is an Obsidian plugin for opening and editing common text files
 - Status display for file size, last modified time, encoding, language mode, and cursor position.
 - Large-file warnings to avoid accidentally editing huge logs or SQL files.
 - Automatic encoding detection and manual encoding selection for ASCII, UTF-8, GBK, GB18030, Big5, Shift_JIS, and UTF-16.
+- Improved auto-detection for common Chinese legacy encodings, especially GBK and GB18030 text files.
 - Draft autosave for unsaved changes to reduce accidental data loss.
 - Automatically enables Obsidian's `showUnsupportedFiles` setting so non-Markdown files can appear in the file explorer.
+- Tries to refresh the file explorer when the plugin is enabled, reducing the need to restart Obsidian after first install.
+- Adds a toolbar format button for JSON, XML, YAML, and SQL files to improve readability on demand.
 - Falls back to the Vault Adapter when Obsidian's file index cannot read or write a file directly.
 
 ## Supported Extensions
@@ -39,7 +42,7 @@ You can customize the supported extensions in the plugin settings tab. When upgr
 4. Enter the repository: [Jinmoli/textFileEditor](https://github.com/Jinmoli/textFileEditor)
 
 5. Follow the prompts to install and enable `Text File Editor`.
-6. If non-Markdown files still do not appear in the file explorer, restart Obsidian or press `Ctrl+R` to reload.
+6. The plugin will usually refresh the file explorer automatically after enabling. If files still do not appear, restart Obsidian or press `Ctrl+R` to reload.
 
 ### Manual Installation
 
@@ -66,6 +69,7 @@ You can customize the supported extensions in the plugin settings tab. When upgr
 - Open a supported text file, edit it directly, and save it with the toolbar button.
 - Use `Ctrl/Cmd+S` to save the current file.
 - If an older file is garbled, switch the editor toolbar encoding dropdown to `GBK`, `GB18030`, or `ASCII` and reload it.
+- Use the toolbar format button to improve readability for JSON, XML, YAML, and SQL files before saving.
 - Read-only and word-wrap states are remembered per file and do not globally affect other files.
 
 ## Development

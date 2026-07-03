@@ -32,12 +32,19 @@ export function decodeTextContent(buffer: ArrayBuffer, preferredEncoding: TextFi
     };
   }
 
-  const decoded = DECODABLE_ENCODINGS.map((encoding) => ({
-    encoding,
-    content: decodeWithEncoding(buffer, encoding)
-  }));
-  decoded.sort((left, right) => replacementScore(left.content) - replacementScore(right.content));
-  return decoded[0];
+  const decoded = DECODABLE_ENCODINGS.map((encoding) => {
+    const content = decodeWithEncoding(buffer, encoding);
+    return {
+      encoding,
+      content,
+      score: readabilityScore(content, encoding)
+    };
+  });
+  decoded.sort((left, right) => left.score - right.score);
+  return {
+    content: decoded[0].content,
+    encoding: decoded[0].encoding
+  };
 }
 
 export function normalizeEncodingInput(value: string | null | undefined): TextFileEncoding {
@@ -79,8 +86,14 @@ function detectBomEncoding(buffer: ArrayBuffer): Exclude<TextFileEncoding, "auto
   return null;
 }
 
-function replacementScore(content: string): number {
+function readabilityScore(content: string, encoding: Exclude<TextFileEncoding, "auto">): number {
   const replacements = content.match(/\uFFFD/g)?.length ?? 0;
   const controls = content.match(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g)?.length ?? 0;
-  return replacements * 10 + controls;
+  const nullCharacters = content.match(/\u0000/g)?.length ?? 0;
+  const chineseCharacters = content.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+  const suspiciousCharacters = content.match(/[^\u0009\u000a\u000d\u0020-\u007e\u00a0-\u024f\u2e80-\u9fff\uff00-\uffef]/g)?.length ?? 0;
+  const utf8Bias = encoding === "utf-8" ? -2 : 0;
+  const chineseBias = (encoding === "gbk" || encoding === "gb18030") && chineseCharacters > 0 ? -4 : 0;
+
+  return replacements * 100 + controls * 30 + nullCharacters * 40 + suspiciousCharacters * 6 - chineseCharacters * 12 + utf8Bias + chineseBias;
 }

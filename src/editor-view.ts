@@ -49,6 +49,8 @@ import {
   type TextFileMetadata
 } from "./file-metadata";
 import { readTextFileContent } from "./file-content";
+import { formatTextContent, isFormattingSupported } from "./text-format";
+import { decodePropertiesTextForDisplay, encodePropertiesTextForStorage, shouldUsePropertiesEscapes } from "./properties-text";
 import { normalizeEncodingInput, type TextFileEncoding } from "./text-encoding";
 import type { TextFileEditorSettings } from "./settings-core";
 
@@ -169,6 +171,7 @@ export class TextFileEditorView extends FileView {
   private encodingSelectEl: HTMLSelectElement | null = null;
   private editor: EditorView | null = null;
   private editorHostEl: HTMLElement | null = null;
+  private formatButton: ButtonComponent | null = null;
   private readOnlyButton: ButtonComponent | null = null;
   private reloadButton: ButtonComponent | null = null;
   private saveButton: ButtonComponent | null = null;
@@ -280,6 +283,7 @@ export class TextFileEditorView extends FileView {
 
     try {
       const content = editor.state.doc.toString();
+      const storageContent = shouldUsePropertiesEscapes(target.extension) ? encodePropertiesTextForStorage(content) : content;
       if (this.currentEncoding !== "utf-8" && this.currentEncoding !== "ascii") {
         const shouldSave = window.confirm(
           `当前文件按 ${formatEncodingLabel(this.currentEncoding)} 显示。受 Obsidian 写入能力限制，保存后文件编码可能变为 UTF-8。确定继续保存吗？`
@@ -289,9 +293,9 @@ export class TextFileEditorView extends FileView {
         }
       }
       if (target.file) {
-        await this.app.vault.modify(target.file, content);
+        await this.app.vault.modify(target.file, storageContent);
       } else {
-        await this.app.vault.adapter.write(target.path, content);
+        await this.app.vault.adapter.write(target.path, storageContent);
       }
       this.cleanContent = content;
       this.setDirty(false);
@@ -344,6 +348,43 @@ export class TextFileEditorView extends FileView {
     this.updateStatus();
   }
 
+  formatCurrentContent(): void {
+    if (this.isReadOnly) {
+      new Notice("当前文件处于只读模式，请先切换为可编辑后再格式化。");
+      return;
+    }
+
+    if (!this.editor) {
+      new Notice("当前没有可格式化的文本文件。");
+      return;
+    }
+
+    if (!isFormattingSupported(this.currentLanguage)) {
+      new Notice("当前文件类型暂不支持格式化。");
+      return;
+    }
+
+    try {
+      const currentContent = this.editor.state.doc.toString();
+      const formatted = formatTextContent(currentContent, this.currentLanguage).content;
+      if (formatted === currentContent) {
+        new Notice("当前内容已是较易读格式，无需再次格式化。");
+        return;
+      }
+
+      this.editor.dispatch({
+        changes: {
+          from: 0,
+          to: this.editor.state.doc.length,
+          insert: formatted
+        }
+      });
+      new Notice("已完成格式化，可继续检查后保存。");
+    } catch (error) {
+      new Notice(error instanceof Error ? error.message : "格式化失败，请先确认当前文件语法完整。");
+    }
+  }
+
   private renderShell(): void {
     const container = this.contentEl;
     container.empty();
@@ -358,6 +399,10 @@ export class TextFileEditorView extends FileView {
 
     this.reloadButton = this.createToolbarButton(toolbar, "refresh-cw", "重新加载", "从磁盘重新读取文件内容", () => {
       void this.reload();
+    });
+
+    this.formatButton = this.createToolbarButton(toolbar, "wand-sparkles", "格式化", "整理当前文件内容，提升可读性", () => {
+      this.formatCurrentContent();
     });
 
     this.readOnlyButton = this.createToolbarButton(toolbar, "unlock", "可编辑", "切换只读/编辑模式", () => {
@@ -409,8 +454,9 @@ export class TextFileEditorView extends FileView {
         preferredEncoding
       });
       this.currentEncoding = result.encoding;
-      this.cleanContent = result.content;
-      this.createEditor(result.content, file.extension);
+      const displayContent = shouldUsePropertiesEscapes(file.extension) ? decodePropertiesTextForDisplay(result.content) : result.content;
+      this.cleanContent = displayContent;
+      this.createEditor(displayContent, file.extension);
       this.setDirty(false);
     } catch (error) {
       console.error(error);
@@ -445,8 +491,9 @@ export class TextFileEditorView extends FileView {
         preferredEncoding
       });
       this.currentEncoding = result.encoding;
-      this.cleanContent = result.content;
-      this.createEditor(result.content, target.extension);
+      const displayContent = shouldUsePropertiesEscapes(target.extension) ? decodePropertiesTextForDisplay(result.content) : result.content;
+      this.cleanContent = displayContent;
+      this.createEditor(displayContent, target.extension);
       this.setDirty(false);
     } catch (error) {
       console.error(error);
@@ -604,6 +651,9 @@ export class TextFileEditorView extends FileView {
     this.wrapButton?.buttonEl.classList.toggle("is-active", this.isWordWrap);
     this.readOnlyButton?.buttonEl.setAttribute("aria-pressed", String(this.isReadOnly));
     this.wrapButton?.buttonEl.setAttribute("aria-pressed", String(this.isWordWrap));
+    if (this.formatButton) {
+      this.formatButton.buttonEl.disabled = this.isReadOnly || !isFormattingSupported(this.currentLanguage);
+    }
 
     if (this.encodingSelectEl) {
       this.encodingSelectEl.value = this.currentEncoding;
