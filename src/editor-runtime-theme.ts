@@ -10,6 +10,9 @@ export const EDITOR_RUNTIME_THEME_SELECTORS = {
   customSearchButton: "& .text-file-editor__search-button",
   customSearchOption: "& .text-file-editor__search-option",
   customSearchClose: "& .text-file-editor__search-close",
+  gutters: "& .cm-gutters",
+  lineNumber: "& .cm-lineNumbers .cm-gutterElement",
+  activeLineGutterElement: "& .cm-gutterElement.cm-activeLineGutter",
   searchPanel: "& .cm-panels",
   searchPanelTop: "& .cm-panels-top",
   searchRow: "& .cm-search",
@@ -83,6 +86,20 @@ export const editorRuntimeTheme = EditorView.theme({
     marginLeft: "auto",
     minWidth: "30px",
     padding: "0"
+  },
+  [EDITOR_RUNTIME_THEME_SELECTORS.gutters]: {
+    background: "var(--background-primary)",
+    borderRight: "1px solid var(--background-modifier-border)",
+    color: "var(--text-faint, var(--text-muted))"
+  },
+  [EDITOR_RUNTIME_THEME_SELECTORS.lineNumber]: {
+    color: "var(--text-faint, var(--text-muted))",
+    transition: "color 120ms ease, background-color 120ms ease"
+  },
+  [EDITOR_RUNTIME_THEME_SELECTORS.activeLineGutterElement]: {
+    background: "color-mix(in srgb, var(--interactive-accent, #2563eb) 10%, transparent)",
+    color: "var(--interactive-accent, #2563eb)",
+    fontWeight: "600"
   },
   [EDITOR_RUNTIME_THEME_SELECTORS.searchPanel]: {
     background: "var(--background-primary)",

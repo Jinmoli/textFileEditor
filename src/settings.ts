@@ -71,6 +71,17 @@ export class TextFileEditorSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("显示行号")
+      .setDesc("在文本编辑器左侧显示行号，并高亮当前光标所在行。")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showLineNumbers).onChange(async (value) => {
+          this.plugin.settings.showLineNumbers = value;
+          await this.plugin.saveSettings();
+          this.plugin.refreshOpenTextFileViews();
+        })
+      );
+
+    new Setting(containerEl)
       .setName("默认只读")
       .setDesc("打开文件时默认不允许编辑，需要手动切换到编辑模式。")
       .addToggle((toggle) =>

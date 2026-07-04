@@ -9,6 +9,7 @@ export interface TextFileEditorSettings {
   encoding: TextFileEncoding;
   largeFileWarningSizeMb: number;
   saveShortcutHint: string;
+  showLineNumbers: boolean;
   supportedExtensions: string[];
 }
 
@@ -20,6 +21,7 @@ export const DEFAULT_SETTINGS: TextFileEditorSettings = {
   encoding: "auto",
   largeFileWarningSizeMb: 5,
   saveShortcutHint: "Ctrl/Cmd+S",
+  showLineNumbers: true,
   supportedExtensions: [...DEFAULT_SUPPORTED_EXTENSIONS]
 };
 
@@ -72,6 +74,7 @@ export function mergeSettings(saved: Partial<TextFileEditorSettings> | null | un
     encoding: normalizeEncodingInput(saved?.encoding),
     largeFileWarningSizeMb: normalizePositiveNumber(saved?.largeFileWarningSizeMb, DEFAULT_SETTINGS.largeFileWarningSizeMb),
     saveShortcutHint: saved?.saveShortcutHint?.trim() || DEFAULT_SETTINGS.saveShortcutHint,
+    showLineNumbers: saved?.showLineNumbers ?? DEFAULT_SETTINGS.showLineNumbers,
     supportedExtensions
   };
 }

@@ -13,11 +13,17 @@ describe("settings", () => {
     expect(mergeSettings({ autoOpenFileList: true }).autoOpenFileList).toBe(true);
   });
 
+  it("shows line numbers by default and preserves a saved opt-out", () => {
+    expect(DEFAULT_SETTINGS.showLineNumbers).toBe(true);
+    expect(mergeSettings({ showLineNumbers: false }).showLineNumbers).toBe(false);
+  });
+
   it("merges saved settings with defaults and normalizes extensions", () => {
     const merged = mergeSettings({
         defaultReadOnly: true,
         encoding: "gbk",
         largeFileWarningSizeMb: 8,
+        showLineNumbers: false,
         supportedExtensions: ["SQL", ".json", "sql"]
       });
 
@@ -28,6 +34,7 @@ describe("settings", () => {
       encoding: "gbk",
       largeFileWarningSizeMb: 8,
       autoOpenFileList: DEFAULT_SETTINGS.autoOpenFileList,
+      showLineNumbers: false,
       saveShortcutHint: DEFAULT_SETTINGS.saveShortcutHint
     });
     expect(merged.supportedExtensions.slice(0, 2)).toEqual(["sql", "json"]);

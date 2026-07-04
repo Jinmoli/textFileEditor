@@ -114,6 +114,7 @@ export class TextFileEditorView extends FileView {
   private pathOnlyFile: TextFilePathTarget | null = null;
   private readonly readOnlyCompartment = new Compartment();
   private readonly wrapCompartment = new Compartment();
+  private readonly lineNumbersCompartment = new Compartment();
   private readonly fileStates = new Map<string, FileEditorState>();
   private cleanContent = "";
   private currentEncoding: TextFileEncoding = "utf-8";
@@ -281,6 +282,16 @@ export class TextFileEditorView extends FileView {
     });
     this.updateToolbarState();
     this.updateStatus();
+  }
+
+  refreshFromSettings(): void {
+    if (!this.editor) {
+      return;
+    }
+
+    this.editor.dispatch({
+      effects: this.lineNumbersCompartment.reconfigure(this.createLineNumberExtensions())
+    });
   }
 
   formatCurrentContent(): void {
@@ -533,8 +544,7 @@ export class TextFileEditorView extends FileView {
 
   private createBaseEditorExtensions(): Extension[] {
     return [
-      lineNumbers(),
-      highlightActiveLineGutter(),
+      this.lineNumbersCompartment.of(this.createLineNumberExtensions()),
       highlightSpecialChars(),
       history(),
       foldGutter(),
@@ -572,6 +582,14 @@ export class TextFileEditorView extends FileView {
         ...foldKeymap
       ])
     ];
+  }
+
+  private createLineNumberExtensions(): Extension {
+    if (!this.settingsProvider().showLineNumbers) {
+      return [];
+    }
+
+    return [lineNumbers(), highlightActiveLineGutter()];
   }
 
   private getLanguageExtension(extension: string): Extension {

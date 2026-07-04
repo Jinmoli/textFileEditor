@@ -6,6 +6,9 @@ describe("editor runtime theme", () => {
     expect(EDITOR_RUNTIME_THEME_SELECTORS.customSearchPanel).toContain(".text-file-editor__search-panel");
     expect(EDITOR_RUNTIME_THEME_SELECTORS.customSearchPrimaryRow).toContain("primary");
     expect(EDITOR_RUNTIME_THEME_SELECTORS.customSearchClose).toContain("search-close");
+    expect(EDITOR_RUNTIME_THEME_SELECTORS.gutters).toContain(".cm-gutters");
+    expect(EDITOR_RUNTIME_THEME_SELECTORS.lineNumber).toContain(".cm-lineNumbers");
+    expect(EDITOR_RUNTIME_THEME_SELECTORS.activeLineGutterElement).toContain(".cm-activeLineGutter");
     expect(EDITOR_RUNTIME_THEME_SELECTORS.comment).toContain(".tok-comment");
     expect(EDITOR_RUNTIME_THEME_SELECTORS.keyword).toContain(".tok-keyword");
     expect(EDITOR_RUNTIME_THEME_SELECTORS.property).toContain(".tok-propertyName.tok-definition");

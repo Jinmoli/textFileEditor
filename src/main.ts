@@ -77,6 +77,15 @@ export default class TextFileEditorPlugin extends Plugin {
     this.registeredExtensions = result.registeredExtensions;
   }
 
+  refreshOpenTextFileViews(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(TEXT_FILE_EDITOR_VIEW_TYPE)) {
+      const view = leaf.view;
+      if (view instanceof TextFileEditorView) {
+        view.refreshFromSettings();
+      }
+    }
+  }
+
   supportsFile(file: TFile): boolean {
     return isSupportedExtension(file.extension, this.registeredExtensions);
   }
