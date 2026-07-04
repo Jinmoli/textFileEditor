@@ -14,11 +14,8 @@ import {
   defaultHighlightStyle,
   foldGutter,
   foldKeymap,
-  HighlightStyle,
   indentOnInput,
-  StreamParser,
   StreamLanguage,
-  StringStream,
   syntaxHighlighting
 } from "@codemirror/language";
 import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
@@ -26,7 +23,7 @@ import { groovy } from "@codemirror/legacy-modes/mode/groovy";
 import { powerShell } from "@codemirror/legacy-modes/mode/powershell";
 import { properties } from "@codemirror/legacy-modes/mode/properties";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
-import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, Extension } from "@codemirror/state";
 import {
   drawSelection,
@@ -39,8 +36,20 @@ import {
   lineNumbers,
   rectangularSelection
 } from "@codemirror/view";
-import { tags } from "@lezer/highlight";
+import { classHighlighter } from "@lezer/highlight";
+import { PROPERTIES_TOKEN_TABLE, editorHighlightStyle } from "./editor-highlighting";
+import { EDITOR_ZH_CN_PHRASES } from "./editor-localization";
+import { createTextFileSearchPanel } from "./editor-search-panel";
+import { editorRuntimeTheme } from "./editor-runtime-theme";
+import { openEditorSearchPanel } from "./editor-search";
+import { createLegacyHighlightFallback } from "./legacy-highlight-fallback";
+import { getEditorShortcutAction, shouldHandleEditorShortcutEvent } from "./editor-shortcuts";
 import { getExtensionLanguageKey, normalizeExtension, type LanguageKey } from "./extension-map";
+import {
+  buildOriginalFileSnapshot,
+  shouldNoticeSpecialLineEnding,
+  type OriginalFileSnapshot
+} from "./file-fidelity";
 import {
   UNKNOWN_FILE_METADATA,
   exceedsLargeFileThreshold,
@@ -51,81 +60,11 @@ import {
 import { readTextFileContent } from "./file-content";
 import { formatTextContent, isFormattingSupported } from "./text-format";
 import { decodePropertiesTextForDisplay, encodePropertiesTextForStorage, shouldUsePropertiesEscapes } from "./properties-text";
+import { batchParser, shellParser } from "./script-highlighting";
 import { normalizeEncodingInput, type TextFileEncoding } from "./text-encoding";
 import type { TextFileEditorSettings } from "./settings-core";
 
 export const TEXT_FILE_EDITOR_VIEW_TYPE = "text-file-editor-view";
-
-const SHELL_KEYWORDS = new Set([
-  "case",
-  "do",
-  "done",
-  "elif",
-  "else",
-  "esac",
-  "export",
-  "fi",
-  "for",
-  "function",
-  "if",
-  "in",
-  "local",
-  "read",
-  "return",
-  "select",
-  "set",
-  "shift",
-  "then",
-  "trap",
-  "unset",
-  "until",
-  "while"
-]);
-
-const BATCH_KEYWORDS = new Set([
-  "call",
-  "cd",
-  "choice",
-  "copy",
-  "del",
-  "do",
-  "echo",
-  "else",
-  "endlocal",
-  "errorlevel",
-  "exit",
-  "for",
-  "goto",
-  "if",
-  "in",
-  "md",
-  "move",
-  "not",
-  "pause",
-  "popd",
-  "pushd",
-  "rd",
-  "rem",
-  "ren",
-  "set",
-  "setlocal",
-  "shift",
-  "start"
-]);
-
-const shellParser: StreamParser<null> = {
-  name: "shell",
-  token(stream) {
-    return tokenizeShell(stream);
-  }
-};
-
-const batchParser: StreamParser<null> = {
-  name: "batch",
-  token(stream) {
-    return tokenizeBatch(stream);
-  }
-};
 
 const LANGUAGE_SUPPORT: Record<Exclude<LanguageKey, "text">, () => Extension> = {
   batch: () => StreamLanguage.define(batchParser),
@@ -136,7 +75,11 @@ const LANGUAGE_SUPPORT: Record<Exclude<LanguageKey, "text">, () => Extension> = 
   java,
   javascript,
   json,
-  properties: () => StreamLanguage.define(properties),
+  properties: () =>
+    StreamLanguage.define({
+      ...properties,
+      tokenTable: PROPERTIES_TOKEN_TABLE
+    }),
   powershell: () => StreamLanguage.define(powerShell),
   shell: () => StreamLanguage.define(shellParser),
   sql,
@@ -144,16 +87,6 @@ const LANGUAGE_SUPPORT: Record<Exclude<LanguageKey, "text">, () => Extension> = 
   xml,
   yaml
 };
-
-const scriptHighlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: "var(--text-accent)" },
-  { tag: tags.comment, color: "var(--text-muted)", fontStyle: "italic" },
-  { tag: tags.string, color: "var(--color-green)" },
-  { tag: tags.variableName, color: "var(--color-yellow)" },
-  { tag: tags.number, color: "var(--color-orange)" },
-  { tag: tags.operator, color: "var(--color-cyan)" },
-  { tag: tags.atom, color: "var(--color-purple)" }
-]);
 
 const ENCODING_OPTIONS: ReadonlyArray<{ value: TextFileEncoding; label: string }> = [
   { value: "auto", label: "Auto" },
@@ -172,6 +105,7 @@ export class TextFileEditorView extends FileView {
   private editor: EditorView | null = null;
   private editorHostEl: HTMLElement | null = null;
   private formatButton: ButtonComponent | null = null;
+  private findButton: ButtonComponent | null = null;
   private readOnlyButton: ButtonComponent | null = null;
   private reloadButton: ButtonComponent | null = null;
   private saveButton: ButtonComponent | null = null;
@@ -185,6 +119,7 @@ export class TextFileEditorView extends FileView {
   private currentEncoding: TextFileEncoding = "utf-8";
   private currentLanguage: LanguageKey = "text";
   private currentMetadata: TextFileMetadata = UNKNOWN_FILE_METADATA;
+  private originalSnapshot: OriginalFileSnapshot | null = null;
   private cursorLine = 1;
   private cursorColumn = 1;
   private draftIntervalId: number | null = null;
@@ -405,6 +340,10 @@ export class TextFileEditorView extends FileView {
       this.formatCurrentContent();
     });
 
+    this.findButton = this.createToolbarButton(toolbar, "search", "查找", "在当前文件中查找（Ctrl/Cmd + F）", () => {
+      this.openFindPanel();
+    });
+
     this.readOnlyButton = this.createToolbarButton(toolbar, "unlock", "可编辑", "切换只读/编辑模式", () => {
       this.toggleReadOnly();
     });
@@ -438,6 +377,7 @@ export class TextFileEditorView extends FileView {
     }
 
     this.isLoading = true;
+    this.originalSnapshot = null;
     try {
       this.currentMetadata = {
         size: file.stat.size,
@@ -454,6 +394,12 @@ export class TextFileEditorView extends FileView {
         preferredEncoding
       });
       this.currentEncoding = result.encoding;
+      this.originalSnapshot = buildOriginalFileSnapshot({
+        content: result.content,
+        encoding: result.encoding,
+        fileType: shouldUsePropertiesEscapes(file.extension) ? "properties" : "text"
+      });
+      this.noticeSpecialLineEnding(file.name, this.originalSnapshot.lineEnding);
       const displayContent = shouldUsePropertiesEscapes(file.extension) ? decodePropertiesTextForDisplay(result.content) : result.content;
       this.cleanContent = displayContent;
       this.createEditor(displayContent, file.extension);
@@ -476,6 +422,7 @@ export class TextFileEditorView extends FileView {
     }
 
     this.isLoading = true;
+    this.originalSnapshot = null;
     try {
       this.currentMetadata = await this.readPathMetadata(target.path);
       this.applyFileState(target.path);
@@ -491,6 +438,12 @@ export class TextFileEditorView extends FileView {
         preferredEncoding
       });
       this.currentEncoding = result.encoding;
+      this.originalSnapshot = buildOriginalFileSnapshot({
+        content: result.content,
+        encoding: result.encoding,
+        fileType: shouldUsePropertiesEscapes(target.extension) ? "properties" : "text"
+      });
+      this.noticeSpecialLineEnding(target.name, this.originalSnapshot.lineEnding);
       const displayContent = shouldUsePropertiesEscapes(target.extension) ? decodePropertiesTextForDisplay(result.content) : result.content;
       this.cleanContent = displayContent;
       this.createEditor(displayContent, target.extension);
@@ -588,9 +541,16 @@ export class TextFileEditorView extends FileView {
       drawSelection(),
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
+      EditorState.phrases.of(EDITOR_ZH_CN_PHRASES),
       indentOnInput(),
+      search({
+        top: true,
+        createPanel: createTextFileSearchPanel
+      }),
+      editorRuntimeTheme,
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      syntaxHighlighting(scriptHighlightStyle),
+      syntaxHighlighting(editorHighlightStyle),
+      syntaxHighlighting(classHighlighter),
       bracketMatching(),
       closeBrackets(),
       rectangularSelection(),
@@ -619,7 +579,15 @@ export class TextFileEditorView extends FileView {
     if (languageKey === "text") {
       return [];
     }
-    return LANGUAGE_SUPPORT[languageKey]();
+    const languageExtension = LANGUAGE_SUPPORT[languageKey]();
+    return [languageExtension, this.getLegacyHighlightFallback(languageKey)];
+  }
+
+  private getLegacyHighlightFallback(languageKey: LanguageKey): Extension {
+    if (languageKey === "properties" || languageKey === "shell" || languageKey === "batch") {
+      return createLegacyHighlightFallback(languageKey);
+    }
+    return [];
   }
 
   private setDirty(value: boolean): void {
@@ -638,8 +606,9 @@ export class TextFileEditorView extends FileView {
     const size = formatFileSize(this.currentMetadata.size);
     const modified = formatModifiedTime(this.currentMetadata.mtime);
     const language = this.currentLanguage === "text" ? "纯文本" : this.currentLanguage.toUpperCase();
+    const lineEnding = formatLineEndingLabel(this.originalSnapshot?.lineEnding ?? "unknown");
     this.statusEl.setText(
-      `${dirty} · ${mode} · ${wrap} · ${language} · ${this.currentEncoding.toUpperCase()} · ${size} · ${modified} · ${this.cursorLine}:${this.cursorColumn}`
+      `${dirty} · ${mode} · ${wrap} · ${language} · ${this.currentEncoding.toUpperCase()} · ${lineEnding} · ${size} · ${modified} · ${this.cursorLine}:${this.cursorColumn}`
     );
   }
 
@@ -669,24 +638,37 @@ export class TextFileEditorView extends FileView {
   }
 
   private handleDocumentKeydown(event: KeyboardEvent): void {
-    const isSaveShortcut = (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "s";
-    if (!isSaveShortcut || !this.shouldHandleSaveShortcut(event)) {
+    const action = getEditorShortcutAction(event);
+    if (!action || !this.shouldHandleEditorShortcut(event)) {
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
-    void this.save();
-  }
 
-  private shouldHandleSaveShortcut(event: KeyboardEvent): boolean {
-    if (this.app.workspace.getActiveViewOfType(TextFileEditorView) === this) {
-      return true;
+    if (action === "save") {
+      void this.save();
+      return;
     }
 
+    this.openFindPanel();
+  }
+
+  private shouldHandleEditorShortcut(event: KeyboardEvent): boolean {
+    const isActiveView = this.app.workspace.getActiveViewOfType(TextFileEditorView) === this;
     const target = event.target;
-    return target instanceof Node && this.contentEl.contains(target);
+    const targetInsideEditor = target instanceof Node && this.contentEl.contains(target);
+    return shouldHandleEditorShortcutEvent(isActiveView, targetInsideEditor);
+  }
+
+  private openFindPanel(): void {
+    if (!this.editor) {
+      new Notice("当前没有可查找的文本文件。");
+      return;
+    }
+
+    openEditorSearchPanel(this.editor);
   }
 
   private createToolbarButton(
@@ -810,6 +792,12 @@ export class TextFileEditorView extends FileView {
       // 目录已存在时无需处理。
     }
   }
+
+  private noticeSpecialLineEnding(fileName: string, lineEnding: OriginalFileSnapshot["lineEnding"]): void {
+    if (shouldNoticeSpecialLineEnding(lineEnding)) {
+      new Notice(`文件“${fileName}”包含混合换行。插件会按原内容保守保存，建议保存前先确认是否需要统一换行格式。`, 7000);
+    }
+  }
 }
 
 interface TextFilePathTarget {
@@ -858,60 +846,15 @@ function formatEncodingLabel(encoding: TextFileEncoding): string {
   return ENCODING_OPTIONS.find((option) => option.value === encoding)?.label ?? encoding.toUpperCase();
 }
 
-function tokenizeShell(stream: StringStream): string | null {
-  if (stream.eatSpace()) {
-    return null;
+function formatLineEndingLabel(lineEnding: OriginalFileSnapshot["lineEnding"]): string {
+  switch (lineEnding) {
+    case "crlf":
+      return "CRLF";
+    case "lf":
+      return "LF";
+    case "mixed":
+      return "混合换行";
+    default:
+      return "换行未知";
   }
-  if (stream.match(/^#.*/)) {
-    return "comment";
-  }
-  if (stream.match(/^"(?:[^"\\]|\\.)*"?/) || stream.match(/^'(?:[^']*)'?/)) {
-    return "string";
-  }
-  if (stream.match(/^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/) || stream.match(/^\$[0-9@#?*!-]/)) {
-    return "variableName";
-  }
-  if (stream.match(/^\b\d+(?:\.\d+)?\b/)) {
-    return "number";
-  }
-  if (stream.match(/^(?:&&|\|\||[|&;<>]=?|[(){}])/)) {
-    return "operator";
-  }
-
-  const word = stream.match(/^[A-Za-z_][A-Za-z0-9_-]*/);
-  if (word && word !== true) {
-    return SHELL_KEYWORDS.has(word[0]) ? "keyword" : null;
-  }
-
-  stream.next();
-  return null;
-}
-
-function tokenizeBatch(stream: StringStream): string | null {
-  if (stream.eatSpace()) {
-    return null;
-  }
-  if (stream.match(/^::.*$/) || stream.match(/^rem\b.*$/i)) {
-    return "comment";
-  }
-  if (stream.match(/^"(?:[^"]|"")*"?/)) {
-    return "string";
-  }
-  if (stream.match(/^%%?[A-Za-z0-9_]+/) || stream.match(/^%[^%\s]+%/) || stream.match(/^![^!\s]+!/)) {
-    return "variableName";
-  }
-  if (stream.match(/^\b\d+\b/)) {
-    return "number";
-  }
-  if (stream.match(/^(?:&&|\|\||[|&<>]=?|[()])/)) {
-    return "operator";
-  }
-
-  const word = stream.match(/^[A-Za-z_][A-Za-z0-9_-]*/);
-  if (word && word !== true) {
-    return BATCH_KEYWORDS.has(word[0].toLowerCase()) ? "keyword" : null;
-  }
-
-  stream.next();
-  return null;
 }

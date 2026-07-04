@@ -1,6 +1,7 @@
 import esbuild from "esbuild";
 import builtins from "builtin-modules";
 import { copyFile, mkdir } from "node:fs/promises";
+import { resolveBuildOptions, resolveBuildProfile } from "./build-config.mjs";
 
 const outdir = ".obsidian/plugins/text-file-editor";
 const banner = `/*
@@ -19,6 +20,8 @@ const obsidianRuntimeExternals = [
   "@lezer/highlight",
   "@lezer/lr"
 ];
+const buildProfile = resolveBuildProfile(process.env);
+const buildOptions = resolveBuildOptions(buildProfile);
 
 await mkdir(outdir, { recursive: true });
 
@@ -34,10 +37,10 @@ await esbuild.build({
   ],
   format: "cjs",
   logLevel: "info",
-  minify: false,
+  minify: buildOptions.minify,
   outfile: `${outdir}/main.js`,
   platform: "browser",
-  sourcemap: "inline",
+  sourcemap: buildOptions.sourcemap,
   target: "es2020"
 });
 

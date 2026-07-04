@@ -1,4 +1,5 @@
 import { decodeTextContent, type DecodedTextContent, type TextFileEncoding } from "./text-encoding";
+import { detectLineEnding } from "./file-fidelity";
 
 export interface TextFileReader {
   path: string;
@@ -16,30 +17,42 @@ export async function readTextFileContent(options: ReadTextFileContentOptions): 
   const preferredEncoding = options.preferredEncoding ?? "auto";
   if (preferredEncoding !== "auto" && options.adapterReadBinary) {
     try {
-      return decodeTextContent(await options.adapterReadBinary(options.path), preferredEncoding);
+      const decoded = decodeTextContent(await options.adapterReadBinary(options.path), preferredEncoding);
+      return {
+        ...decoded,
+        lineEnding: detectLineEnding(decoded.content)
+      };
     } catch (binaryError) {
       console.warn("Text File Editor：指定编码读取失败，尝试使用 Obsidian 文本方式读取。", binaryError);
     }
   }
 
   try {
+    const content = await options.vaultRead();
     return {
-      content: await options.vaultRead(),
-      encoding: "utf-8"
+      content,
+      encoding: "utf-8",
+      lineEnding: detectLineEnding(content)
     };
   } catch (vaultError) {
     if (options.adapterReadBinary) {
       try {
-        return decodeTextContent(await options.adapterReadBinary(options.path), preferredEncoding);
+        const decoded = decodeTextContent(await options.adapterReadBinary(options.path), preferredEncoding);
+        return {
+          ...decoded,
+          lineEnding: detectLineEnding(decoded.content)
+        };
       } catch (binaryError) {
         console.warn("Text File Editor：二进制方式读取失败，尝试使用文本方式读取。", binaryError);
       }
     }
 
     try {
+      const content = await options.adapterRead(options.path);
       return {
-        content: await options.adapterRead(options.path),
-        encoding: "utf-8"
+        content,
+        encoding: "utf-8",
+        lineEnding: detectLineEnding(content)
       };
     } catch (adapterError) {
       const fileName = options.name ?? options.path;

@@ -11,7 +11,7 @@ describe("properties text helpers", () => {
   });
 
   it("encodes non-ascii characters back to java unicode escapes", () => {
-    expect(encodePropertiesTextForStorage("## 测试")).toBe("## \\u6D4B\\u8BD5");
+    expect(encodePropertiesTextForStorage("你好")).toBe("\\u4F60\\u597D");
   });
 
   it("keeps ascii content readable while escaping control characters", () => {

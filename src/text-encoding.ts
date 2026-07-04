@@ -3,6 +3,7 @@ export type TextFileEncoding = "auto" | "ascii" | "utf-8" | "gbk" | "gb18030" | 
 export interface DecodedTextContent {
   content: string;
   encoding: TextFileEncoding;
+  lineEnding?: "lf" | "crlf" | "mixed" | "unknown";
 }
 
 const DECODABLE_ENCODINGS: Exclude<TextFileEncoding, "auto">[] = [
