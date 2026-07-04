@@ -98,9 +98,9 @@ npm run build
 
 ## 发布说明
 
-当前稳定版本：`v1.2.1`
+当前稳定版本：`v1.3.0`
 
-推送形如 `v1.2.1` 的 tag 后，GitHub Actions 会自动运行测试、类型检查、构建，并上传插件 zip 到 GitHub Release。
+推送形如 `v1.3.0` 的 tag 后，GitHub Actions 会自动运行测试、类型检查、构建，并上传插件 zip 到 GitHub Release。
 
 ## 许可证
 
