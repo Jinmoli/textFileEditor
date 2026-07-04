@@ -98,9 +98,9 @@ Build output is written to:
 
 ## Release
 
-Current stable version: `v1.2.0`
+Current stable version: `v1.2.1`
 
-Pushing a tag like `v1.2.0` triggers GitHub Actions to run tests, type checks, build the plugin, and upload a zip file to the GitHub Release.
+Pushing a tag like `v1.2.1` triggers GitHub Actions to run tests, type checks, build the plugin, and upload a zip file to the GitHub Release.
 
 ## License
 

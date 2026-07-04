@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.1
+
+- 修复 `file-metadata` 时间格式测试对本地时区的隐式依赖，避免 GitHub Actions 在 `UTC` 环境下失败。
+
 ## v1.2.0
 
 - 新增编辑器内 `Ctrl/Cmd+F` 查找与替换面板，并完成中文界面文案适配。

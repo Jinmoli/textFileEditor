@@ -10,7 +10,10 @@ describe("file metadata helpers", () => {
   });
 
   it("formats modified times without ISO T separators", () => {
-    expect(formatModifiedTime(Date.UTC(2026, 6, 2, 8, 9))).toBe("2026-07-02 16:09");
+    const localTimestamp = new Date(2026, 6, 2, 16, 9).getTime();
+
+    expect(formatModifiedTime(localTimestamp)).toBe("2026-07-02 16:09");
+    expect(formatModifiedTime(localTimestamp)).not.toContain("T");
   });
 
   it("detects files that exceed the configured large file threshold", () => {
