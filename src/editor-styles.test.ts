@@ -21,4 +21,17 @@ describe("editor stylesheet fallbacks", () => {
     expect(styles).toContain('.text-file-editor__host .cm-search input[name="replace"]');
     expect(styles).toContain('.text-file-editor__host .cm-search button[name="close"]');
   });
+
+  it("uses a restrained accent treatment for active toolbar state buttons", () => {
+    const styles = readFileSync(join(process.cwd(), "styles.css"), "utf8");
+
+    expect(styles).toContain(".text-file-editor__button.is-active");
+    expect(styles).toContain("background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));");
+    expect(styles).toContain(
+      "border-color: color-mix(in srgb, var(--interactive-accent) 55%, var(--background-modifier-border));"
+    );
+    expect(styles).toContain("color: color-mix(in srgb, var(--interactive-accent) 82%, var(--text-normal));");
+    expect(styles).toContain(".text-file-editor__button.is-active:hover");
+    expect(styles).not.toContain("background: var(--background-modifier-success);");
+  });
 });
